@@ -195,6 +195,12 @@ class BankaBaglantiIstek(BaseModel):
     musteri_no: str = ""
     tc_kimlik: str = ""
     sms_kodu: str = ""
+    ozel_portfoy: dict | None = None
+    nakit: float | None = None
+
+
+class RealNakitIstek(BaseModel):
+    nakit: float
 
 
 class HesapModuIstek(BaseModel):
@@ -760,6 +766,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "İş Yatırım Menkul Değerler A.Ş. — BIST Pay & VİOP",
         "renk": "#004B93",
         "logo_text": "İŞ",
+        "web_url": "https://yatirim.isbank.com.tr",
         "durum": "Hazır",
     },
     {
@@ -768,6 +775,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "Garanti Yatırım Menkul Kıymetler A.Ş.",
         "renk": "#008542",
         "logo_text": "GB",
+        "web_url": "https://www.garantibbvayatirim.com.tr",
         "durum": "Hazır",
     },
     {
@@ -776,6 +784,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "Yapı Kredi Yatırım Menkul Değerler A.Ş.",
         "renk": "#003A70",
         "logo_text": "YK",
+        "web_url": "https://www.ykyatirim.com.tr",
         "durum": "Hazır",
     },
     {
@@ -784,6 +793,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "Ak Yatırım Menkul Değerler A.Ş.",
         "renk": "#E30613",
         "logo_text": "AK",
+        "web_url": "https://www.akyatirim.com.tr",
         "durum": "Hazır",
     },
     {
@@ -792,6 +802,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "Ziraat Yatırım Menkul Değerler A.Ş.",
         "renk": "#D2001A",
         "logo_text": "ZR",
+        "web_url": "https://www.ziraatyatirim.com.tr",
         "durum": "Hazır",
     },
     {
@@ -800,6 +811,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "Vakıf Yatırım Menkul Değerler A.Ş.",
         "renk": "#FDB813",
         "logo_text": "VK",
+        "web_url": "https://www.vakifyatirim.com.tr",
         "durum": "Hazır",
     },
     {
@@ -808,6 +820,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "QNB Finansinvest Menkul Değerler A.Ş.",
         "renk": "#6A1A40",
         "logo_text": "QNB",
+        "web_url": "https://www.qnbfinansinvest.com",
         "durum": "Hazır",
     },
     {
@@ -816,6 +829,7 @@ DESTEKLENEN_BANKALAR = [
         "aciklama": "Midas Menkul Değerler A.Ş. — SPK Lisanslı Aracı Kurum",
         "renk": "#11E1A3",
         "logo_text": "MD",
+        "web_url": "https://www.getmidas.com",
         "durum": "Hazır",
     },
 ]
@@ -879,6 +893,8 @@ def portfolio(authorization: str | None = Header(default=None)):
 
     real_nakit = float(kullanici.get("real_cash", 0.0))
     real_banka = kullanici.get("real_bank", "")
+    secilen_b = next((b for b in DESTEKLENEN_BANKALAR if b["ad"].lower() == real_banka.lower() or b["id"].lower() == real_banka.lower()), None)
+    bank_web_url = secilen_b.get("web_url", "") if secilen_b else ""
     hesap_modu = kullanici.get("account_mode", "demo")
 
     # Frontend bileşenlerinin anlık moduna göre doğrudan tüketebileceği ana alanlar
@@ -891,6 +907,7 @@ def portfolio(authorization: str | None = Header(default=None)):
         "account_mode": hesap_modu,
         "is_real": (hesap_modu == "real"),
         "real_bank": real_banka,
+        "bank_web_url": bank_web_url,
         "real_connected": bool(real_banka),
         "virtual_cash": aktif_nakit,
         "blocked_cash": bloke_nakit if hesap_modu == "demo" else 0.0,
@@ -948,22 +965,19 @@ def pozisyon_ekle(istek: PozisyonIstek, authorization: str | None = Header(defau
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
-    if kullanici.get("account_mode") == "real":
-        raise HTTPException(
-            status_code=403,
-            detail="Gerçek banka portföyü salt okunurdur. Manuel pozisyon eklenemez. Lütfen Demo Hesaba geçiniz."
-        )
-
     hisse = istek.hisse.strip().upper()
     if hisse not in BIST_TUM_LIST:
         raise HTTPException(status_code=400, detail=f"'{hisse}' BIST listesinde yok.")
     if istek.lot <= 0 or istek.maliyet < 0:
         raise HTTPException(status_code=400, detail="Lot sıfırdan büyük, maliyet negatif olmamalı.")
-    portfoy = kullanici.get("portfolio") or {}
-    portfoy[hisse] = {"lot": istek.lot, "maliyet": istek.maliyet, "hedef": "Yeni"}
-    kullanici["portfolio"] = portfoy
+
+    hesap_modu = kullanici.get("account_mode", "demo")
+    port_anahtar = "real_portfolio" if hesap_modu == "real" else "portfolio"
+    portfoy = kullanici.get(port_anahtar) or {}
+    portfoy[hisse] = {"lot": istek.lot, "maliyet": istek.maliyet, "hedef": "Banka Hissesi" if hesap_modu == "real" else "Yeni"}
+    kullanici[port_anahtar] = portfoy
     upsert_user(email, kullanici)
-    return {"portfolio": portfoy}
+    return {"portfolio": portfoy, "account_mode": hesap_modu}
 
 
 @app.put("/api/portfolio/{hisse}")
@@ -973,22 +987,18 @@ def pozisyon_guncelle(hisse: str, istek: PozisyonGuncelleIstek, authorization: s
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
-    if kullanici.get("account_mode") == "real":
-        raise HTTPException(
-            status_code=403,
-            detail="Gerçek banka portföyü salt okunurdur. Pozisyon güncellenemez. Lütfen Demo Hesaba geçiniz."
-        )
-
     hisse = hisse.strip().upper()
-    portfoy = kullanici.get("portfolio") or {}
+    hesap_modu = kullanici.get("account_mode", "demo")
+    port_anahtar = "real_portfolio" if hesap_modu == "real" else "portfolio"
+    portfoy = kullanici.get(port_anahtar) or {}
     if hisse not in portfoy:
         raise HTTPException(status_code=404, detail=f"{hisse} portföyünüzde yok.")
     if istek.lot <= 0 or istek.maliyet < 0:
         raise HTTPException(status_code=400, detail="Lot sıfırdan büyük, maliyet negatif olmamalı.")
     portfoy[hisse].update({"lot": istek.lot, "maliyet": istek.maliyet})
-    kullanici["portfolio"] = portfoy
+    kullanici[port_anahtar] = portfoy
     upsert_user(email, kullanici)
-    return {"portfolio": portfoy}
+    return {"portfolio": portfoy, "account_mode": hesap_modu}
 
 
 @app.delete("/api/portfolio/{hisse}")
@@ -998,20 +1008,27 @@ def pozisyon_sil(hisse: str, authorization: str | None = Header(default=None)):
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
-    if kullanici.get("account_mode") == "real":
-        raise HTTPException(
-            status_code=403,
-            detail="Gerçek banka portföyü salt okunurdur. Pozisyon silinemez. Lütfen Demo Hesaba geçiniz."
-        )
-
     hisse = hisse.strip().upper()
-    portfoy = kullanici.get("portfolio") or {}
+    hesap_modu = kullanici.get("account_mode", "demo")
+    port_anahtar = "real_portfolio" if hesap_modu == "real" else "portfolio"
+    portfoy = kullanici.get(port_anahtar) or {}
     if hisse not in portfoy:
         raise HTTPException(status_code=404, detail=f"{hisse} portföyünüzde yok.")
     del portfoy[hisse]
-    kullanici["portfolio"] = portfoy
+    kullanici[port_anahtar] = portfoy
     upsert_user(email, kullanici)
-    return {"portfolio": portfoy}
+    return {"portfolio": portfoy, "account_mode": hesap_modu}
+
+
+@app.post("/api/bank/portfolio/cash")
+def banka_nakit_ayarla(istek: RealNakitIstek, authorization: str | None = Header(default=None)):
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+    kullanici["real_cash"] = max(0.0, round(float(istek.nakit), 2))
+    upsert_user(email, kullanici)
+    return {"ok": True, "real_cash": kullanici["real_cash"]}
 
 
 # ---------------------------------------------------------------------------
@@ -1409,27 +1426,37 @@ def banka_bagla(istek: BankaBaglantiIstek, authorization: str | None = Header(de
     secilen = next((b for b in DESTEKLENEN_BANKALAR if b["ad"].lower() == istek.banka.lower() or b["id"].lower() == istek.banka.lower()), None)
     banka_adi = secilen["ad"] if secilen else istek.banka
 
-    # Banka açık bankacılık arayüzünden çekilen örnek kurumsal portföy
-    mock_real_portfolio = {
-        "THYAO": {"lot": 350, "maliyet": 274.50, "hedef": "Uzun Vade"},
-        "ASELS": {"lot": 500, "maliyet": 348.00, "hedef": "Temettü"},
-        "TUPRS": {"lot": 200, "maliyet": 365.20, "hedef": "Büyüme"},
-        "KCHOL": {"lot": 300, "maliyet": 195.40, "hedef": "Çekirdek"},
-        "BIMAS": {"lot": 150, "maliyet": 462.00, "hedef": "Defansif"},
-    }
-    mock_real_cash = 48500.00
+    mevcut_real = kullanici.get("real_portfolio") or {}
+    mevcut_cash = float(kullanici.get("real_cash", 0.0))
+
+    if istek.ozel_portfoy is not None:
+        target_portfolio = istek.ozel_portfoy
+        target_cash = float(istek.nakit or 0.0)
+    elif mevcut_real:
+        target_portfolio = mevcut_real
+        target_cash = mevcut_cash
+    else:
+        # Başlangıç şablonu
+        target_portfolio = {
+            "THYAO": {"lot": 350, "maliyet": 274.50, "hedef": "Uzun Vade"},
+            "ASELS": {"lot": 500, "maliyet": 348.00, "hedef": "Temettü"},
+            "TUPRS": {"lot": 200, "maliyet": 365.20, "hedef": "Büyüme"},
+            "KCHOL": {"lot": 300, "maliyet": 195.40, "hedef": "Çekirdek"},
+            "BIMAS": {"lot": 150, "maliyet": 462.00, "hedef": "Defansif"},
+        }
+        target_cash = 48500.00
 
     kullanici["real_bank"] = banka_adi
-    kullanici["real_portfolio"] = mock_real_portfolio
-    kullanici["real_cash"] = mock_real_cash
+    kullanici["real_portfolio"] = target_portfolio
+    kullanici["real_cash"] = target_cash
     kullanici["account_mode"] = "real"
     upsert_user(email, kullanici)
 
     return {
         "ok": True,
         "banka": banka_adi,
-        "real_cash": mock_real_cash,
-        "portfolio": mock_real_portfolio,
+        "real_cash": target_cash,
+        "portfolio": target_portfolio,
         "mesaj": f"{banka_adi} Açık Bankacılık entegrasyonu sağlandı. Gerçek portföyünüz salt okunur modda aktarıldı."
     }
 

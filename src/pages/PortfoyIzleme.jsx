@@ -61,6 +61,12 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState('');
   const [bankaModalAcik, setBankaModalAcik] = useState(false);
+  const [duzenleModalAcik, setDuzenleModalAcik] = useState(false);
+  const [yeniHisse, setYeniHisse] = useState('THYAO');
+  const [yeniLot, setYeniLot] = useState('100');
+  const [yeniMaliyet, setYeniMaliyet] = useState('285.00');
+  const [duzenleNakit, setDuzenleNakit] = useState('');
+  const [islemMesaji, setIslemMesaji] = useState('');
 
   const yukle = useCallback(async () => {
     setYukleniyor(true);
@@ -179,12 +185,45 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {isReal ? (
             <>
+              {veri?.bank_web_url && (
+                <a
+                  href={veri.bank_web_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="arac-btn"
+                  style={{
+                    fontSize: 12,
+                    padding: '7px 14px',
+                    textDecoration: 'none',
+                    color: '#2962FF',
+                    borderColor: 'rgba(41,98,255,0.4)',
+                    background: 'rgba(41,98,255,0.08)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                  }}
+                >
+                  <span>🏛️</span>
+                  <span>{bagliBanka || 'Banka'} Web Şubesi ↗</span>
+                </a>
+              )}
+              <button
+                className="arac-btn"
+                onClick={() => {
+                  setDuzenleNakit(String(veri?.virtual_cash || 0));
+                  setIslemMesaji('');
+                  setDuzenleModalAcik(true);
+                }}
+                style={{ fontSize: 12, padding: '7px 14px', borderColor: '#FF9800', color: '#FF9800', background: 'rgba(255,152,0,0.1)' }}
+              >
+                ✏️ Hisselerimi & Nakdimi Düzenle
+              </button>
               <button
                 className="arac-btn"
                 onClick={() => setBankaModalAcik(true)}
                 style={{ fontSize: 12, padding: '7px 14px' }}
               >
-                🏛️ Bankayı Yönet / Değiştir
+                Bankayı Değiştir
               </button>
               <button
                 className="arac-btn aktif"
@@ -511,6 +550,173 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
           yukle();
         }}
       />
+
+      {/* Gerçek Banka Portföyü Düzenleme Modalı */}
+      {duzenleModalAcik && (
+        <div className="tradeall-modal-backdrop" onClick={() => setDuzenleModalAcik(false)}>
+          <div
+            className="tradeall-modal"
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 620, width: '92vw', background: '#131722', border: '1px solid #2A2E39', borderRadius: 12 }}
+          >
+            <div className="tradeall-modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #2A2E39' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>✏️</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: '#FFFFFF' }}>
+                    {bagliBanka || 'Gerçek Banka'} Portföyünü Düzenle
+                  </div>
+                  <div style={{ fontSize: 11, color: '#787B86' }}>
+                    Bankanızdaki hisseleri, lot adetlerini, maliyetlerinizi ve nakit bakiyenizi tanımlayın.
+                  </div>
+                </div>
+              </div>
+              <button className="tradeall-modal-kapat" onClick={() => setDuzenleModalAcik(false)} aria-label="Kapat">✕</button>
+            </div>
+
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {islemMesaji && (
+                <div style={{ padding: '8px 12px', background: 'rgba(8, 153, 129, 0.15)', border: '1px solid #089981', color: '#089981', borderRadius: 6, fontSize: 12 }}>
+                  {islemMesaji}
+                </div>
+              )}
+
+              {/* 1. Nakit Bakiyesi */}
+              <div style={{ background: '#1E222D', padding: 12, borderRadius: 8, border: '1px solid #2A2E39' }}>
+                <label style={{ display: 'block', fontSize: 11.5, color: '#787B86', marginBottom: 6, fontWeight: 600 }}>
+                  🏛️ BANKA YATIRIM NAKİT BAKİYESİ (₺)
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={duzenleNakit}
+                    onChange={e => setDuzenleNakit(e.target.value)}
+                    placeholder="Örn: 25000"
+                    style={{ flex: 1, background: '#131722', border: '1px solid #2A2E39', color: '#FFFFFF', padding: '8px 12px', borderRadius: 6, fontSize: 13, fontFamily: 'JetBrains Mono' }}
+                  />
+                  <button
+                    type="button"
+                    className="arac-btn aktif"
+                    onClick={async () => {
+                      try {
+                        await api('/api/bank/portfolio/cash', { method: 'POST', govde: { nakit: parseFloat(duzenleNakit) || 0 } });
+                        setIslemMesaji('Nakit bakiye güncellendi.');
+                        yukle();
+                      } catch (err) {
+                        alert(err.message || 'Hata oluştu');
+                      }
+                    }}
+                    style={{ padding: '8px 14px', fontSize: 12, background: '#089981', borderColor: '#089981', color: '#FFFFFF', fontWeight: 600 }}
+                  >
+                    Kaydet
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Mevcut Hisseler */}
+              <div>
+                <label style={{ display: 'block', fontSize: 11.5, color: '#787B86', marginBottom: 6, fontWeight: 600 }}>
+                  📊 BANKADAKİ MEVCUT HİSSELERİNİZ ({pozisyonlar.length})
+                </label>
+                {pozisyonlar.length === 0 ? (
+                  <div style={{ color: '#787B86', fontSize: 12, padding: 10, background: '#1E222D', borderRadius: 6, textAlign: 'center' }}>
+                    Henüz hisseniz yok. Aşağıdaki formdan ilk hissenizi ekleyebilirsiniz.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+                    {pozisyonlar.map(p => (
+                      <div
+                        key={p.hisse}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1E222D', padding: '8px 12px', borderRadius: 6, border: '1px solid #2A2E39' }}
+                      >
+                        <div>
+                          <b style={{ color: '#FFFFFF', fontSize: 13 }}>{p.hisse}</b>
+                          <span style={{ color: '#787B86', fontSize: 11.5, marginLeft: 8 }}>
+                            {p.lot} Lot @ {fmt(p.maliyet)} ₺
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.confirm(`${p.hisse} hissesini portföyden silmek istiyor musunuz?`)) {
+                              try {
+                                await api(`/api/portfolio/${p.hisse}`, { method: 'DELETE' });
+                                setIslemMesaji(`${p.hisse} silindi.`);
+                                yukle();
+                              } catch (err) {
+                                alert(err.message || 'Silinemedi');
+                              }
+                            }
+                          }}
+                          style={{ background: 'rgba(242, 54, 69, 0.15)', border: '1px solid rgba(242, 54, 69, 0.3)', color: '#F23645', borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
+                        >
+                          Sil
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Yeni Hisse Ekle / Güncelle Formu */}
+              <div style={{ background: '#1E222D', padding: 12, borderRadius: 8, border: '1px solid #2A2E39' }}>
+                <label style={{ display: 'block', fontSize: 11.5, color: '#FF9800', marginBottom: 8, fontWeight: 700 }}>
+                  + YENİ HİSSE EKLE VEYA GÜNCELLE
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr)) auto', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={yeniHisse}
+                    onChange={e => setYeniHisse(e.target.value.toUpperCase())}
+                    placeholder="Sembol (THYAO)"
+                    maxLength={6}
+                    style={{ background: '#131722', border: '1px solid #2A2E39', color: '#FFFFFF', padding: '8px 10px', borderRadius: 6, fontSize: 12, fontFamily: 'JetBrains Mono' }}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    value={yeniLot}
+                    onChange={e => setYeniLot(e.target.value)}
+                    placeholder="Lot"
+                    style={{ background: '#131722', border: '1px solid #2A2E39', color: '#FFFFFF', padding: '8px 10px', borderRadius: 6, fontSize: 12, fontFamily: 'JetBrains Mono' }}
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={yeniMaliyet}
+                    onChange={e => setYeniMaliyet(e.target.value)}
+                    placeholder="Maliyet ₺"
+                    style={{ background: '#131722', border: '1px solid #2A2E39', color: '#FFFFFF', padding: '8px 10px', borderRadius: 6, fontSize: 12, fontFamily: 'JetBrains Mono' }}
+                  />
+                  <button
+                    type="button"
+                    className="arac-btn aktif"
+                    onClick={async () => {
+                      if (!yeniHisse) return alert('Lütfen hisse kodu girin.');
+                      try {
+                        await api('/api/portfolio', {
+                          method: 'POST',
+                          govde: { hisse: yeniHisse, lot: parseInt(yeniLot) || 1, maliyet: parseFloat(yeniMaliyet) || 0 }
+                        });
+                        setIslemMesaji(`${yeniHisse} portföye kaydedildi.`);
+                        yukle();
+                      } catch (err) {
+                        alert(err.message || 'Eklenemedi');
+                      }
+                    }}
+                    style={{ padding: '8px 14px', fontSize: 12, background: '#FF9800', borderColor: '#FF9800', color: '#000000', fontWeight: 700 }}
+                  >
+                    Kaydet
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
