@@ -159,12 +159,6 @@ export default function GirisEkrani({ onGiris }) {
     }
   };
 
-  const demoGiris = () => {
-    setEmail('trader@plutos.com');
-    setPassword('Plutos2026!');
-    girisYap('trader@plutos.com', 'Plutos2026!');
-  };
-
   return (
     <div className="login-wrap" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0e14', padding: 16 }}>
       <div
@@ -371,27 +365,6 @@ export default function GirisEkrani({ onGiris }) {
                 ? 'E-Posta Doğrulama Kodu Al →'
                 : 'Terminale Giriş Yap'}
             </button>
-
-            {!kayitModu && (
-              <button
-                type="button"
-                onClick={demoGiris}
-                disabled={yukleniyor}
-                style={{
-                  width: '100%',
-                  padding: '10px 0',
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  background: 'rgba(41, 98, 255, 0.12)',
-                  color: '#2962FF',
-                  border: '1px solid rgba(41, 98, 255, 0.3)',
-                  cursor: 'pointer',
-                }}
-              >
-                ⚡ Demo Portföy ile Hızlı Başlat
-              </button>
-            )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #2a2e39', paddingTop: 14, fontSize: 12, color: '#787b86' }}>
               {kayitModu ? (
