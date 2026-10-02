@@ -1,0 +1,9 @@
+node_modules
+.git
+.gitignore
+dist
+__pycache__
+*.pyc
+.env
+backend/sessions.json
+backend/__pycache__
