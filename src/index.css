@@ -2459,3 +2459,253 @@ button.primary:hover {
 .btn-aksiyon-grafik:hover {
   box-shadow: 0 0 12px rgba(41, 98, 255, 0.5);
 }
+
+/* ==========================================================================
+   PLUTOS MOBİL VE TABLET DUYARLI (RESPONSIVE) TASARIM SİSTEMİ
+   ========================================================================== */
+
+/* 1. Tablet & Orta Boyutlu Ekranlar (max-width: 1024px) */
+@media (max-width: 1024px) {
+  .container {
+    padding: 16px 18px !important;
+  }
+  .tradeall-workstation-header {
+    padding: 10px 14px !important;
+  }
+  .tradeall-pro-tag,
+  .tradingview-fusion-pill {
+    display: none !important;
+  }
+  .header-orta-seans .seans-durum {
+    display: none !important;
+  }
+  .seans-ayrac {
+    display: none !important;
+  }
+}
+
+/* 2. Tablet Dikey & Akıllı Telefonlar (max-width: 768px) */
+@media (max-width: 768px) {
+  body {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+  }
+
+  .container {
+    padding: 10px 12px !important;
+  }
+
+  /* Header & Kontroller */
+  .header {
+    padding: 8px 12px !important;
+  }
+  .header-sol {
+    gap: 8px !important;
+  }
+  .header-sag {
+    gap: 6px !important;
+  }
+  .header-orta-seans {
+    display: none !important;
+  }
+  .seans-durum-rozet {
+    display: none !important;
+  }
+  .cockpit-bakiye-kutu {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+  .tradeall-hizli-emir-btn {
+    padding: 5px 8px !important;
+    font-size: 11.5px !important;
+  }
+  .tradeall-hizli-emir-btn span:last-child {
+    display: none !important;
+  }
+
+  /* Navigasyon: Mobilde Yatay Swipe (Kaydırılabilir) Sekme Çubuğu */
+  .nav-ust {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px !important;
+    gap: 4px !important;
+    scrollbar-width: none;
+  }
+  .nav-ust::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-ust button {
+    padding: 7px 12px !important;
+    font-size: 13px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0;
+  }
+
+  .nav-alt {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px !important;
+    gap: 6px !important;
+    scrollbar-width: none;
+  }
+  .nav-alt::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-alt button {
+    white-space: nowrap !important;
+    padding: 5px 12px !important;
+    font-size: 12px !important;
+    flex-shrink: 0;
+  }
+
+  /* Ticker Bandı */
+  .piyasa-bandi {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ticker-kontroller {
+    overflow-x: auto;
+    width: 100%;
+    scrollbar-width: none;
+    padding: 4px 6px;
+    border-right: none;
+    border-bottom: 1px solid #1f2430;
+  }
+  .ticker-kontroller::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Tablolar ve Veri Gösterimleri */
+  .veri-tablosu {
+    font-size: 11px !important;
+  }
+  .veri-tablosu th,
+  .veri-tablosu td {
+    padding: 8px 6px !important;
+  }
+  .mobilde-kaydir-ipucu {
+    display: flex !important;
+  }
+  .hucre-checkbox-sabit {
+    position: sticky !important;
+    left: 0 !important;
+    background: #131722 !important;
+    z-index: 2 !important;
+  }
+  .hucre-hisse-sabit {
+    position: sticky !important;
+    left: 36px !important;
+    background: #131722 !important;
+    z-index: 2 !important;
+    box-shadow: 3px 0 6px rgba(0, 0, 0, 0.45) !important;
+  }
+  th.hucre-checkbox-sabit,
+  th.hucre-hisse-sabit {
+    background: #181C27 !important;
+    z-index: 3 !important;
+  }
+  tr:nth-child(even) .hucre-checkbox-sabit,
+  tr:nth-child(even) .hucre-hisse-sabit {
+    background: #161A26 !important;
+  }
+
+  /* Hibrit Sekmeler (TradingView / Fintables / TradeAll) */
+  .hibrit-nav-bar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    gap: 6px !important;
+  }
+  .hibrit-nav-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .hibrit-tab {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+  }
+
+  /* Gridler Mobilde 2 Kolon */
+  .kurumsal-grid-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Çoklu Kolonları Dikey Yığına Dönüştürme */
+  .two-col,
+  .terminal-iki-kolon,
+  .arastirma-ust-grid {
+    flex-direction: column !important;
+    display: flex !important;
+  }
+  .two-col > div,
+  .terminal-iki-kolon > div {
+    min-width: 100% !important;
+  }
+
+  /* Modallar Tam Ekran Uyumu */
+  .kurumsal-kart-modal,
+  .tradeall-modal-govde {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 90vh !important;
+    margin: auto !important;
+    padding: 14px !important;
+  }
+
+  /* Yasal Uyarı Metni */
+  .yasal {
+    font-size: 11px !important;
+    padding: 8px 10px !important;
+    margin-top: 24px !important;
+  }
+}
+
+/* 3. Küçük Akıllı Telefonlar (max-width: 480px) */
+@media (max-width: 480px) {
+  .brand span {
+    font-size: 15px !important;
+  }
+  .logout-btn {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+  }
+  
+  .metric-card {
+    min-width: 130px !important;
+    padding: 10px 12px !important;
+  }
+  .metric-card .value {
+    font-size: 18px !important;
+  }
+
+  /* Isı Haritası Mobilde 2'li Izgara */
+  .isi-haritasi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+  .isi-kutu {
+    min-height: 85px !important;
+    padding: 8px 10px !important;
+  }
+  .isi-kutu .sembol {
+    font-size: 13px !important;
+  }
+  .isi-kutu .fiyat {
+    font-size: 12px !important;
+  }
+
+  /* AI Asistan Mobilde Tam Genişlik */
+  .ai-mesaj-balon {
+    max-width: 95% !important;
+    font-size: 13px !important;
+  }
+  .ai-soru-input {
+    font-size: 13px !important;
+  }
+}

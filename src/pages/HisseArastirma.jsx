@@ -382,10 +382,10 @@ export default function HisseArastirma({ api, onModulDegistir }) {
             style={{
               marginTop: 14,
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: 12,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              gap: 10,
               background: '#0E1118',
-              padding: 14,
+              padding: 12,
               borderRadius: 8,
               border: '1px solid #1E232F',
             }}
@@ -520,11 +520,15 @@ export default function HisseArastirma({ api, onModulDegistir }) {
       {/* GÖRÜNÜM: DETAYLI TABLO */}
       {gorunum === 'tablo' && (
         <div className="kurumsal-kart" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="mobilde-kaydir-ipucu" style={{ display: 'none', padding: '6px 12px', background: 'rgba(56, 189, 248, 0.08)', borderBottom: '1px solid #1E293B', fontSize: 11, color: '#38BDF8', alignItems: 'center', gap: 6 }}>
+            <span>👉</span>
+            <span>Tabloyu parmağınızla sağa kaydırarak PD/DD, F/K, ROE ve tüm çarpanları görebilirsiniz.</span>
+          </div>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table className="veri-tablosu" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: '#181C27', borderBottom: '1px solid #2A2E39', color: '#9CA3AF', userSelect: 'none' }}>
-                  <th style={{ width: 40, textAlign: 'center', padding: '10px 6px' }}>
+                  <th className="hucre-checkbox-sabit" style={{ width: 40, textAlign: 'center', padding: '10px 6px' }}>
                     <input
                       type="checkbox"
                       checked={seciliHisseler.length === veri?.hisseler?.length && veri?.hisseler?.length > 0}
@@ -538,7 +542,7 @@ export default function HisseArastirma({ api, onModulDegistir }) {
                       title="En fazla 4 hisse seçin"
                     />
                   </th>
-                  <th style={{ padding: '10px 12px', cursor: 'pointer' }} onClick={() => siralamayiDegistir('kod')}>
+                  <th className="hucre-hisse-sabit" style={{ padding: '10px 12px', cursor: 'pointer' }} onClick={() => siralamayiDegistir('kod')}>
                     Hisse & Şirket {sirala === 'kod' && (yon === 'asc' ? '▲' : '▼')}
                   </th>
                   <th style={{ padding: '10px 10px', textAlign: 'right', cursor: 'pointer' }} onClick={() => siralamayiDegistir('fiyat')}>
@@ -615,7 +619,7 @@ export default function HisseArastirma({ api, onModulDegistir }) {
                         }}
                       >
                         {/* Checkbox */}
-                        <td style={{ textAlign: 'center', padding: '8px 6px' }}>
+                        <td className="hucre-checkbox-sabit" style={{ textAlign: 'center', padding: '8px 6px' }}>
                           <input
                             type="checkbox"
                             checked={secili}
@@ -624,7 +628,7 @@ export default function HisseArastirma({ api, onModulDegistir }) {
                         </td>
 
                         {/* Kod & Şirket */}
-                        <td style={{ padding: '8px 12px' }}>
+                        <td className="hucre-hisse-sabit" style={{ padding: '8px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span
                               style={{

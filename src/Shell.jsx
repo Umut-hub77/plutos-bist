@@ -349,7 +349,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
         </header>
 
         {/* 3. Ana Çalışma Alanı (Container) */}
-        <main className="container" style={{ maxWidth: 1440, padding: '20px 24px' }}>
+        <main className="container" style={{ maxWidth: 1440 }}>
           {bildirimAcik ? (
             <button className="logout-btn geri" onClick={() => setBildirimAcik(false)}>
               ← Panele dön
