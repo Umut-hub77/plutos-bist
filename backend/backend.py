@@ -17,6 +17,7 @@ API dokümantasyonu: http://localhost:8000/docs
 """
 
 import os
+import re
 import json
 import secrets
 from concurrent.futures import ThreadPoolExecutor
@@ -26,9 +27,10 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# --- Aynı klasördeki db.py / auth_utils.py ---
-from db import get_user, upsert_user, init_db, User, SessionLocal
+# --- Aynı klasördeki db.py / auth_utils.py / email_service.py ---
+from db import get_user, upsert_user, user_exists, init_db, User, SessionLocal
 from auth_utils import verify_password, hash_password, needs_rehash
+from email_service import send_verification_email, is_smtp_configured
 from bist_list import BIST_TUM_LIST, BIST_SEKTORLER
 
 import yfinance as yf
@@ -118,17 +120,7 @@ def _oturum_dogrula(authorization: str | None) -> str:
     if kayit and kayit["exp"] >= datetime.utcnow():
         return kayit["email"]
 
-    # Yerel geliştirme ortamında sunucu yeniden başlatıldığında kullanıcının oturumunun
-    # düşmemesi için veritabanındaki aktif kullanıcıya bağla
-    with SessionLocal() as db:
-        ilk_kullanici = db.query(User).first()
-        if ilk_kullanici:
-            email = ilk_kullanici.email
-            SESSIONS[token] = {"email": email, "exp": datetime.utcnow() + timedelta(hours=SESSION_TTL_SAAT)}
-            _oturumlari_kaydet()
-            return email
-
-    raise HTTPException(status_code=401, detail="Oturum süresi doldu, tekrar giriş yapın.")
+    raise HTTPException(status_code=401, detail="Oturum süresi doldu veya geçersiz. Lütfen tekrar giriş yapın.")
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +168,18 @@ class KayitIstek(BaseModel):
     soyad: str = ""
 
 
+class DogrulamaKoduGonderIstek(BaseModel):
+    email: str
+    password: str
+    ad: str = ""
+    soyad: str = ""
+
+
+class DogrulamaKoduOnaylaIstek(BaseModel):
+    email: str
+    code: str
+
+
 class EmirIstek(BaseModel):
     hisse: str
     yon: str          # "AL" | "SAT"
@@ -201,35 +205,183 @@ class AlarmIstek(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Auth uçları
+# E-Posta Doğrulama & Auth Yardımcıları
+# ---------------------------------------------------------------------------
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+# Bekleyen e-posta doğrulama istekleri (RAM bellekte tutulur, 10 dk geçerli)
+# format: { email: {"code": "123456", "exp": datetime, "ad": str, "soyad": str, "password": str, "attempts": int} }
+BEKLEYEN_DOGRULAMALAR: dict[str, dict] = {}
+
+
+def _temiz_email(email_str: str) -> str:
+    cleaned = (email_str or "").strip().lower()
+    if not EMAIL_REGEX.match(cleaned):
+        raise HTTPException(
+            status_code=400,
+            detail="Lütfen geçerli bir e-posta adresi giriniz (örnek: trader@kurum.com)."
+        )
+    return cleaned
+
+
+# ---------------------------------------------------------------------------
+# Auth Uç Noktaları (Giriş, Doğrulama ve Kayıt)
 # ---------------------------------------------------------------------------
 @app.post("/api/login")
 def login(istek: GirisIstek):
-    kullanici = get_user(istek.email.strip().lower())
+    email = _temiz_email(istek.email)
+    kullanici = get_user(email)
     if not kullanici or not verify_password(istek.password, kullanici["password"]):
         raise HTTPException(status_code=401, detail="E-posta veya şifre hatalı.")
 
     if needs_rehash(kullanici["password"]):
         kullanici["password"] = hash_password(istek.password)
-        upsert_user(istek.email.strip().lower(), kullanici)
+        upsert_user(email, kullanici)
 
-    token = _token_uret(istek.email.strip().lower())
+    token = _token_uret(email)
     return {"token": token, "ad": kullanici.get("ad", ""), "soyad": kullanici.get("soyad", "")}
+
+
+@app.post("/api/auth/send-verification")
+def auth_send_verification(istek: DogrulamaKoduGonderIstek):
+    """
+    1. Aşama: E-posta tekilliğini doğrular, 6 haneli kod üretir ve e-posta gönderir.
+    Aynı e-posta ile ikinci bir hesap açılmasını kesin olarak engeller.
+    """
+    email = _temiz_email(istek.email)
+
+    # 1. AYNI E-POSTA KONTROLÜ (Duplicate Email Prevention)
+    if user_exists(email):
+        raise HTTPException(
+            status_code=409,
+            detail="Bu e-posta adresiyle zaten kayıtlı bir hesap bulunmaktadır. Lütfen giriş yapın."
+        )
+
+    if not istek.ad.strip() or not istek.soyad.strip():
+        raise HTTPException(status_code=400, detail="Lütfen ad ve soyadınızı belirtiniz.")
+
+    if len(istek.password) < 6:
+        raise HTTPException(status_code=400, detail="Şifre en az 6 karakter uzunluğunda olmalıdır.")
+
+    # 2. 6 Haneli Güvenlik Kodu Üret (10 dakika geçerli)
+    code = f"{secrets.randbelow(900000) + 100000}"
+    exp = datetime.utcnow() + timedelta(minutes=10)
+
+    BEKLEYEN_DOGRULAMALAR[email] = {
+        "code": code,
+        "exp": exp,
+        "ad": istek.ad.strip(),
+        "soyad": istek.soyad.strip(),
+        "password": istek.password,
+        "attempts": 0,
+    }
+
+    tam_ad = f"{istek.ad.strip()} {istek.soyad.strip()}"
+    gonderildi, aciklama = send_verification_email(email, code, tam_ad)
+
+    resp = {
+        "ok": True,
+        "email": email,
+        "message": f"6 haneli doğrulama kodu {email} adresine gönderildi.",
+        "smtp_aktif": is_smtp_configured(),
+    }
+
+    # Sunucuda henüz SMTP yapılandırılmadıysa test/geliştirici kodunu da sağla
+    if not is_smtp_configured():
+        resp["dev_code"] = code
+        resp["dev_mesaj"] = f"Test Doğrulama Kodu: {code} (Canlıda gerçek e-posta teslimi için SMTP tanımlanmalıdır)"
+
+    return resp
+
+
+@app.post("/api/auth/verify-and-register")
+def auth_verify_and_register(istek: DogrulamaKoduOnaylaIstek):
+    """
+    2. Aşama: Kullanıcının girdiği 6 haneli kodu kontrol eder.
+    Kod doğruysa hesabı oluşturur, doğrulanmış işaretler ve oturum açar.
+    """
+    email = _temiz_email(istek.email)
+
+    kayit = BEKLEYEN_DOGRULAMALAR.get(email)
+    if not kayit:
+        raise HTTPException(
+            status_code=400,
+            detail="Bu e-posta için aktif bir doğrulama oturumu bulunamadı. Lütfen tekrar kod isteyin."
+        )
+
+    if datetime.utcnow() > kayit["exp"]:
+        BEKLEYEN_DOGRULAMALAR.pop(email, None)
+        raise HTTPException(
+            status_code=400,
+            detail="Doğrulama kodunun 10 dakikalık süresi dolmuş. Lütfen yeni bir kod talep edin."
+        )
+
+    if kayit["attempts"] >= 5:
+        BEKLEYEN_DOGRULAMALAR.pop(email, None)
+        raise HTTPException(
+            status_code=429,
+            detail="Çok fazla hatalı kod denendi. Güvenlik nedeniyle lütfen baştan kod isteyiniz."
+        )
+
+    girilen_kod = (istek.code or "").strip()
+    if girilen_kod != kayit["code"]:
+        kayit["attempts"] += 1
+        kalan = 5 - kayit["attempts"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Girdiğiniz 6 haneli kod hatalı. (Kalan deneme hakkı: {kalan})"
+        )
+
+    # Kod doğru! Çift kontrol: Bu e-posta daha önce DB'ye kaydedilmiş mi?
+    if user_exists(email):
+        BEKLEYEN_DOGRULAMALAR.pop(email, None)
+        raise HTTPException(
+            status_code=409,
+            detail="Bu e-posta adresiyle zaten kayıtlı bir hesap bulunmaktadır. Lütfen giriş yapın."
+        )
+
+    # Kullanıcıyı veritabanına kaydet
+    upsert_user(email, {
+        "ad": kayit["ad"],
+        "soyad": kayit["soyad"],
+        "dt": None,
+        "password": hash_password(kayit["password"]),
+        "email_verified": "1",
+        "watchlist": [],
+        "portfolio": {},
+        "virtual_cash": 100000.0,
+        "trade_log": [],
+        "price_alarms": [],
+        "onboarding_gorundu": "",
+    })
+
+    BEKLEYEN_DOGRULAMALAR.pop(email, None)
+
+    token = _token_uret(email)
+    return {
+        "ok": True,
+        "token": token,
+        "ad": kayit["ad"],
+        "soyad": kayit["soyad"],
+        "message": "E-posta adresiniz doğrulandı ve hesabınız başarıyla açıldı."
+    }
 
 
 @app.post("/api/register")
 def register(istek: KayitIstek):
-    email = istek.email.strip().lower()
-    if get_user(email):
-        raise HTTPException(status_code=400, detail="Bu e-posta ile zaten bir hesap var.")
-    upsert_user(email, {
-        "ad": istek.ad, "soyad": istek.soyad, "dt": None,
-        "password": hash_password(istek.password),
-        "watchlist": [], "portfolio": {},
-        "virtual_cash": 100000.0, "trade_log": [], "price_alarms": [],
-    })
-    token = _token_uret(email)
-    return {"token": token, "ad": istek.ad, "soyad": istek.soyad}
+    """Geriye dönük uyumluluk: Doğrudan çağrılırsa e-posta kontrolü yapar ve doğrulama akışını başlatır."""
+    email = _temiz_email(istek.email)
+    if user_exists(email):
+        raise HTTPException(
+            status_code=409,
+            detail="Bu e-posta adresi ile zaten kayıtlı bir hesap var. Lütfen giriş yapın."
+        )
+    return auth_send_verification(DogrulamaKoduGonderIstek(
+        email=email,
+        password=istek.password,
+        ad=istek.ad,
+        soyad=istek.soyad,
+    ))
 
 
 # ---------------------------------------------------------------------------

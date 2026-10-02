@@ -35,10 +35,12 @@ try:
 except ImportError:
     pass
 
-DATABASE_URL = os.environ.get("DATABASE_URL") or "sqlite:///lumina_quant.db"
+_DB_DIR = os.path.dirname(os.path.abspath(__file__))
+_DEFAULT_SQLITE_PATH = os.path.join(_DB_DIR, "lumina_quant.db").replace("\\", "/")
+DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{_DEFAULT_SQLITE_PATH}"
 
-# SQLite'a özgü ayar: aynı süreç içinde birden fazla thread'in (Streamlit + WhatsApp
-# zamanlayıcı thread'i gibi) aynı bağlantıyı güvenle kullanabilmesi için gerekli.
+# SQLite'a özgü ayar: aynı süreç içinde birden fazla thread'in (FastAPI + arka plan işlemleri)
+# aynı bağlantıyı güvenle kullanabilmesi için gerekli.
 _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(DATABASE_URL, connect_args=_connect_args)
@@ -52,11 +54,12 @@ class User(Base):
     email = Column(String, primary_key=True)
     ad = Column(String, nullable=False, default="")
     soyad = Column(String, nullable=False, default="")
-    dt = Column(String, nullable=True)  # doğum tarihi, "YYYY-MM-DD" string olarak saklanıyor (mevcut formatla uyumlu)
+    dt = Column(String, nullable=True)  # doğum tarihi, "YYYY-MM-DD" string olarak saklanıyor
     password = Column(String, nullable=False)  # bcrypt hash (bkz. auth_utils.py)
+    email_verified = Column(String, nullable=False, default="1")  # "1" ise doğrulanmış
     watchlist = Column(JSON, nullable=False, default=list)
     portfolio = Column(JSON, nullable=False, default=dict)
-    virtual_cash = Column(String, nullable=False, default="100000.0")  # Plutos demo (kağıt) işlem sanal bakiyesi
+    virtual_cash = Column(String, nullable=False, default="100000.0")  # Plutos demo işlem sanal bakiyesi
     trade_log = Column(JSON, nullable=False, default=list)             # Plutos demo işlem geçmişi
     price_alarms = Column(JSON, nullable=False, default=list)          # Plutos fiyat alarmları
     onboarding_gorundu = Column(String, nullable=False, default="")    # "1" ise ilk kullanım rehberi bir daha gösterilmez
@@ -69,8 +72,7 @@ def _migrate_add_missing_columns():
     """
     SQLite'ta Base.metadata.create_all() mevcut bir tabloya YENİ KOLON eklemez
     (sadece tablo hiç yoksa oluşturur). Bu yüzden zaten var olan users tablosuna
-    virtual_cash/trade_log/price_alarms kolonlarını elle (ALTER TABLE) ekliyoruz.
-    Kolon zaten varsa hata sessizce yutulur (idempotent).
+    eksik kolonları elle (ALTER TABLE) ekliyoruz.
     """
     with engine.connect() as conn:
         for ddl in [
@@ -78,6 +80,7 @@ def _migrate_add_missing_columns():
             "ALTER TABLE users ADD COLUMN trade_log JSON DEFAULT '[]'",
             "ALTER TABLE users ADD COLUMN price_alarms JSON DEFAULT '[]'",
             "ALTER TABLE users ADD COLUMN onboarding_gorundu VARCHAR DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN email_verified VARCHAR DEFAULT '1'",
         ]:
             try:
                 conn.exec_driver_sql(ddl)
@@ -93,12 +96,13 @@ def init_db():
 
 
 def _user_to_legacy_dict(user: User) -> dict:
-    """DB satırını, dashboard.py'nin beklediği eski JSON şekline çevirir."""
+    """DB satırını uygulama sözlüğüne çevirir."""
     return {
         "ad": user.ad,
         "soyad": user.soyad,
         "dt": user.dt,
         "password": user.password,
+        "email_verified": getattr(user, "email_verified", "1") == "1",
         "watchlist": user.watchlist or [],
         "portfolio": user.portfolio or {},
         "virtual_cash": float(user.virtual_cash) if user.virtual_cash not in (None, "") else 100000.0,
@@ -155,12 +159,26 @@ def upsert_users_from_dict(db_dict: dict) -> None:
         session.close()
 
 
-def get_user(email: str):
-    """Tek kullanıcıyı eski sözlük şeklinde döndürür, yoksa None."""
+def user_exists(email: str) -> bool:
+    """Verilen e-postaya sahip bir kullanıcı olup olmadığını büyük/küçük harf duyarsız kontrol eder."""
     init_db()
     session = SessionLocal()
     try:
-        user = session.get(User, email)
+        from sqlalchemy import func
+        clean = email.strip().lower()
+        return session.query(User).filter(func.lower(User.email) == clean).count() > 0
+    finally:
+        session.close()
+
+
+def get_user(email: str):
+    """Tek kullanıcıyı sözlük şeklinde döndürür, yoksa None."""
+    init_db()
+    session = SessionLocal()
+    try:
+        from sqlalchemy import func
+        clean = email.strip().lower()
+        user = session.query(User).filter(func.lower(User.email) == clean).first()
         return _user_to_legacy_dict(user) if user else None
     finally:
         session.close()
@@ -168,4 +186,5 @@ def get_user(email: str):
 
 def upsert_user(email: str, data: dict) -> None:
     """Tek kullanıcıyı upsert eder (tüm dict'i tekrar yazmak yerine hafif yol)."""
-    upsert_users_from_dict({email: data})
+    clean_email = email.strip().lower()
+    upsert_users_from_dict({clean_email: data})
