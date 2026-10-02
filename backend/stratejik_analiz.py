@@ -10,6 +10,7 @@ Uçlar:
 """
 import random
 import re
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
@@ -399,7 +400,7 @@ def kur(app, d):
         }
 
     # ======================================================================
-    # ARACI KURUM DAĞILIMI (AKD)
+    # ARACI KURUM DAĞILIMI (AKD) — GERÇEKÇİ & DİNAMİK BIST KURUM MOTORU
     # ======================================================================
     @r.get('/api/akd/{hisse}')
     def araci_kurum_dagilimi(hisse: str):
@@ -410,37 +411,197 @@ def kur(app, d):
         df = _naif_temizle(df_ham)
         
         fiyat = float(df['Close'].iloc[-1]) if not df.empty else 100.0
-        hacim = float(df['Volume'].iloc[-1]) if not df.empty and 'Volume' in df.columns else 1500000.0
-        
-        rng = random.Random((hash(sembol) + int(fiyat * 10)) % 88883)
-        kurumlar_alici = ["Bank of America", "İş Yatırım", "QNB Finans", "Garanti BBVA", "Ak Yatırım"]
-        kurumlar_satici = ["Yapı Kredi Yat.", "Deniz Yatırım", "TEB Yatırım", "Vakıf Yatırım", "Ziraat Yatırım"]
+        onceki_kapanis = float(df['Close'].iloc[-2]) if len(df) >= 2 else fiyat
+        degisim = float((fiyat / onceki_kapanis - 1) * 100) if onceki_kapanis > 0 else 0.0
+        hacim = float(df['Volume'].iloc[-1]) if not df.empty and 'Volume' in df.columns else 2500000.0
+        if hacim <= 0:
+            hacim = 2500000.0
 
-        toplam_alici = int(hacim * 0.42)
-        toplam_satici = int(hacim * 0.40)
-        dilimler = [0.34, 0.25, 0.18, 0.13, 0.10]
+        # Borsa İstanbul'da faaliyet gösteren 36 lisanslı aracı kurum ve yatırım bankası havuzu
+        KURUMLAR_TUMU = [
+            # Global / Yabancı ve Fon Kurumları
+            {"ad": "Bank of America", "tur": "global", "baz_guc": 1.45},
+            {"ad": "Yatırım Finansman", "tur": "global", "baz_guc": 1.35},
+            {"ad": "QNB Finansinvest", "tur": "global", "baz_guc": 1.25},
+            {"ad": "HSBC Yatırım", "tur": "global", "baz_guc": 1.05},
+            {"ad": "TEB Yatırım", "tur": "global", "baz_guc": 0.95},
+            {"ad": "Ünlü Menkul", "tur": "global", "baz_guc": 0.85},
+
+            # Büyük Banka İştirakleri
+            {"ad": "İş Yatırım", "tur": "banka", "baz_guc": 1.50},
+            {"ad": "Garanti BBVA Yatırım", "tur": "banka", "baz_guc": 1.40},
+            {"ad": "Yapı Kredi Yat.", "tur": "banka", "baz_guc": 1.35},
+            {"ad": "Ak Yatırım", "tur": "banka", "baz_guc": 1.30},
+            {"ad": "Ziraat Yatırım", "tur": "banka", "baz_guc": 1.20},
+            {"ad": "Vakıf Yatırım", "tur": "banka", "baz_guc": 1.15},
+            {"ad": "Halk Yatırım", "tur": "banka", "baz_guc": 1.00},
+            {"ad": "Deniz Yatırım", "tur": "banka", "baz_guc": 0.90},
+            {"ad": "Şeker Yatırım", "tur": "banka", "baz_guc": 0.70},
+            {"ad": "ICBC Turkey Yat.", "tur": "banka", "baz_guc": 0.55},
+            {"ad": "Burgan Yatırım", "tur": "banka", "baz_guc": 0.50},
+
+            # Yerli Bireysel & Algoritmik Aracı Kurumlar
+            {"ad": "Tacirler Yatırım", "tur": "yerli", "baz_guc": 1.05},
+            {"ad": "İnfo Yatırım", "tur": "yerli", "baz_guc": 1.05},
+            {"ad": "Gedik Yatırım", "tur": "yerli", "baz_guc": 1.00},
+            {"ad": "Oyak Yatırım", "tur": "yerli", "baz_guc": 1.00},
+            {"ad": "A1 Capital", "tur": "yerli", "baz_guc": 0.95},
+            {"ad": "Midas Menkul", "tur": "yerli", "baz_guc": 0.90},
+            {"ad": "PhillipCapital", "tur": "yerli", "baz_guc": 0.85},
+            {"ad": "Osmanlı Yatırım", "tur": "yerli", "baz_guc": 0.80},
+            {"ad": "Marbaş Menkul", "tur": "yerli", "baz_guc": 0.75},
+            {"ad": "Alnus Yatırım", "tur": "yerli", "baz_guc": 0.70},
+            {"ad": "Ahlatcı Yatırım", "tur": "yerli", "baz_guc": 0.70},
+            {"ad": "Tera Yatırım", "tur": "yerli", "baz_guc": 0.65},
+            {"ad": "Dinamik Yatırım", "tur": "yerli", "baz_guc": 0.60},
+            {"ad": "Bulls Yatırım", "tur": "yerli", "baz_guc": 0.60},
+            {"ad": "Global Menkul", "tur": "yerli", "baz_guc": 0.60},
+            {"ad": "İnveo Yatırım", "tur": "yerli", "baz_guc": 0.55},
+            {"ad": "Meksa Yatırım", "tur": "yerli", "baz_guc": 0.50},
+            {"ad": "Bizim Menkul", "tur": "yerli", "baz_guc": 0.45},
+            {"ad": "Trive Yatırım", "tur": "yerli", "baz_guc": 0.45},
+        ]
+
+        # Hisse Bazlı Kurumsal Dağılım Karakteristiği
+        BANKA_HISSELERI = {"GARAN", "AKBNK", "YKBNK", "ISCTR", "VAKBN", "HALKB", "TSKB", "ALBRK"}
+        ENDEKS_DEVLERI = {"THYAO", "TUPRS", "KCHOL", "BIMAS", "EREGL", "SISE", "PGSUS", "FROTO", "TOASO", "SAHOL"}
+        HIZLI_SPEK = {"SASA", "HEKTS", "GUBRF", "BRSAN", "KOZAL", "IPEKE", "ODAS", "PETKM"}
+        SAVUNMA_TEKNO = {"ASELS", "TCELL", "LOGO", "SDTTR", "KFEIN"}
+
+        # Tarih + Sembol bazlı deterministik fakat her hissede ve her günde tamamen farklı tohum
+        today_key = datetime.now().strftime("%Y%m%d")
+        seed_hash = hashlib.sha256(f"{today_key}_{sembol}".encode()).hexdigest()
+        seed_int = int(seed_hash[:8], 16)
+        rng = random.Random(seed_int)
+
+        # Fiyat hareketine bağlı genel piyasa yön eğilimi (Trend Bias)
+        trend_bias = degisim * 0.12
+
+        # Her kurum için o hisseye özel dinamik net işlem skoru
+        kurum_skorlari = []
+        for k in KURUMLAR_TUMU:
+            ad = k["ad"]
+            tur = k["tur"]
+            guc = k["baz_guc"]
+
+            # Sektörel kurumsal ağırlık
+            if sembol in BANKA_HISSELERI and tur == "banka":
+                guc *= 1.45
+            elif sembol in ENDEKS_DEVLERI and tur == "global":
+                guc *= 1.45
+            elif sembol in HIZLI_SPEK and tur == "yerli":
+                guc *= 1.40
+            elif sembol in SAVUNMA_TEKNO and (ad in ["Ziraat Yatırım", "Vakıf Yatırım", "İş Yatırım", "Bank of America"]):
+                guc *= 1.35
+
+            ham_skor = rng.gauss(trend_bias * 25, 45) * guc
+            kurum_skorlari.append((ad, ham_skor, guc))
+
+        # Pozitif olanlar Net Alıcı, negatif olanlar Net Satıcı
+        alici_adaylar = [(ad, skor, guc) for ad, skor, guc in kurum_skorlari if skor > 0]
+        satici_adaylar = [(ad, abs(skor), guc) for ad, skor, guc in kurum_skorlari if skor <= 0]
+
+        # En yüksek net alıcı 5 kurum (İlk 5 Alıcı)
+        alici_adaylar.sort(key=lambda x: x[1], reverse=True)
+        top5_alicilar = alici_adaylar[:5] if len(alici_adaylar) >= 5 else alici_adaylar
+
+        # En yüksek net satıcı 5 kurum (İlk 5 Satıcı)
+        satici_adaylar.sort(key=lambda x: x[1], reverse=True)
+        top5_saticilar = satici_adaylar[:5] if len(satici_adaylar) >= 5 else satici_adaylar
+
+        # Toplam hacmin yaklaşık %38-%44'ü net kurum hareketlerine yansır
+        toplam_alici_hacim = int(hacim * (0.38 + (0.04 if degisim > 0 else -0.03)))
+        toplam_satici_hacim = int(hacim * (0.38 + (-0.03 if degisim > 0 else 0.04)))
+
+        top_alici_skor_toplam = sum(x[1] for x in top5_alicilar) or 1.0
+        top_satici_skor_toplam = sum(x[1] for x in top5_saticilar) or 1.0
+
+        alici_ilk5_oran = 0.82 if degisim > 0 else 0.72
+        satici_ilk5_oran = 0.72 if degisim > 0 else 0.82
 
         alicilar = []
-        for k, d in zip(kurumlar_alici, dilimler):
-            lot = int(toplam_alici * d * (0.92 + rng.random() * 0.16))
-            maliyet = round(fiyat * (0.996 + rng.random() * 0.008), 2)
-            alicilar.append({'kurum': k, 'net_lot': lot, 'yuzde': round(d * 100, 1), 'maliyet': maliyet, 'tutar': round(lot * maliyet, 0)})
+        ilk5_alici_lot_toplam = 0
+        for ad, skor, _ in top5_alicilar:
+            pay = (skor / top_alici_skor_toplam) * alici_ilk5_oran
+            lot = max(100, int(toplam_alici_hacim * pay))
+            ilk5_alici_lot_toplam += lot
+            maliyet_sapma = 0.002 + rng.uniform(-0.004, 0.005) if degisim > 0 else -0.002 + rng.uniform(-0.005, 0.003)
+            maliyet = round(fiyat * (1.0 + maliyet_sapma), 2)
+            tutar = round(lot * maliyet, 0)
+            alicilar.append({
+                'kurum': ad,
+                'net_lot': lot,
+                'yuzde': round(pay * 100, 1),
+                'maliyet': maliyet,
+                'tutar': tutar,
+            })
+
+        diger_alici_lot = max(0, toplam_alici_hacim - ilk5_alici_lot_toplam)
+        diger_alici_yuzde = max(0.0, round((1.0 - alici_ilk5_oran) * 100, 1))
+        diger_alici_tutar = round(diger_alici_lot * fiyat, 0)
 
         saticilar = []
-        for k, d in zip(kurumlar_satici, dilimler):
-            lot = int(toplam_satici * d * (0.92 + rng.random() * 0.16))
-            maliyet = round(fiyat * (0.996 + rng.random() * 0.008), 2)
-            saticilar.append({'kurum': k, 'net_lot': lot, 'yuzde': round(d * 100, 1), 'maliyet': maliyet, 'tutar': round(lot * maliyet, 0)})
+        ilk5_satici_lot_toplam = 0
+        for ad, skor, _ in top5_saticilar:
+            pay = (skor / top_satici_skor_toplam) * satici_ilk5_oran
+            lot = max(100, int(toplam_satici_hacim * pay))
+            ilk5_satici_lot_toplam += lot
+            maliyet_sapma = -0.002 + rng.uniform(-0.005, 0.003) if degisim < 0 else 0.001 + rng.uniform(-0.003, 0.004)
+            maliyet = round(fiyat * (1.0 + maliyet_sapma), 2)
+            tutar = round(lot * maliyet, 0)
+            saticilar.append({
+                'kurum': ad,
+                'net_lot': lot,
+                'yuzde': round(pay * 100, 1),
+                'maliyet': maliyet,
+                'tutar': tutar,
+            })
 
-        para_girisi = round((sum(a['tutar'] for a in alicilar) - sum(s['tutar'] for s in saticilar)) / 1_000_000, 2)
+        diger_satici_lot = max(0, toplam_satici_hacim - ilk5_satici_lot_toplam)
+        diger_satici_yuzde = max(0.0, round((1.0 - satici_ilk5_oran) * 100, 1))
+        diger_satici_tutar = round(diger_satici_lot * fiyat, 0)
+
+        toplam_alici_para = sum(a['tutar'] for a in alicilar) + diger_alici_tutar
+        toplam_satici_para = sum(s['tutar'] for s in saticilar) + diger_satici_tutar
+        para_girisi = round((toplam_alici_para - toplam_satici_para) / 1_000_000, 2)
+
+        if para_girisi > 15:
+            baski = "🟢 Güçlü Para Girişi (Toplu Alım / Dağınık Satım)"
+        elif para_girisi > 0:
+            baski = "🟢 Pozitif Para Girişi (Alıcılar Üstün)"
+        elif para_girisi < -15:
+            baski = "🔴 Belirgin Para Çıkışı (Toplu Satış / Dağınık Alım)"
+        elif para_girisi < 0:
+            baski = "🔴 Net Para Çıkışı (Satıcılar Baskın)"
+        else:
+            baski = "⚪ Dengeli Kurum Dağılımı"
+
         return {
             'hisse': sembol,
             'son_fiyat': round(fiyat, 2),
+            'degisim': round(degisim, 2),
             'alicilar': alicilar,
             'saticilar': saticilar,
+            'diger_alici': {
+                'kurum': 'Diğer Kurumlar',
+                'net_lot': diger_alici_lot,
+                'yuzde': diger_alici_yuzde,
+                'maliyet': round(fiyat, 2),
+                'tutar': diger_alici_tutar,
+            },
+            'diger_satici': {
+                'kurum': 'Diğer Kurumlar',
+                'net_lot': diger_satici_lot,
+                'yuzde': diger_satici_yuzde,
+                'maliyet': round(fiyat, 2),
+                'tutar': diger_satici_tutar,
+            },
             'net_para_girisi_milyon': para_girisi,
-            'ilk5_alici_lot': sum(a['net_lot'] for a in alicilar),
-            'ilk5_satici_lot': sum(s['net_lot'] for s in saticilar),
+            'ilk5_alici_lot': ilk5_alici_lot_toplam,
+            'ilk5_satici_lot': ilk5_satici_lot_toplam,
+            'ilk5_alici_yuzde': round(alici_ilk5_oran * 100, 1),
+            'ilk5_satici_yuzde': round(satici_ilk5_oran * 100, 1),
+            'baski_durumu': baski,
         }
 
     # ======================================================================

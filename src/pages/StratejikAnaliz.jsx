@@ -911,45 +911,94 @@ export default function StratejikAnaliz({ api }) {
                 {/* 3. ARACI KURUM DAĞILIMI (AKD) */}
                 {masaSekme === 'akd' && (
                   <div className="akd-kutusu">
-                    <div className="akd-para-kart">
-                      <span style={{ color: '#787B86' }}>Net Para Girişi / Çıkışı</span>
-                      <span
-                        className="tutar"
-                        style={{ color: (akd?.net_para_girisi_milyon || 0) >= 0 ? '#089981' : '#F23645' }}
-                      >
-                        {(akd?.net_para_girisi_milyon || 0) >= 0 ? '+' : ''}{fmt(akd?.net_para_girisi_milyon)} M ₺
-                      </span>
+                    <div className="akd-para-kart" style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#787B86', fontSize: 11 }}>Net Para Girişi / Çıkışı</span>
+                        <span
+                          className="tutar"
+                          style={{ color: (akd?.net_para_girisi_milyon || 0) >= 0 ? '#089981' : '#F23645', fontSize: 14 }}
+                        >
+                          {(akd?.net_para_girisi_milyon || 0) >= 0 ? '+' : ''}{fmt(akd?.net_para_girisi_milyon)} M ₺
+                        </span>
+                      </div>
+                      {akd?.baski_durumu && (
+                        <div style={{ fontSize: 10.5, color: '#D1D4DC', padding: '4px 6px', background: '#131722', borderRadius: 4, borderLeft: (akd?.net_para_girisi_milyon || 0) >= 0 ? '3px solid #089981' : '3px solid #F23645' }}>
+                          {akd.baski_durumu}
+                        </div>
+                      )}
                     </div>
 
                     {/* İlk 5 Alıcı */}
                     <div>
-                      <div className="derinlik-taraf-baslik alis" style={{ marginBottom: 4 }}>İLK 5 ALICI KURUM</div>
+                      <div className="derinlik-taraf-baslik alis" style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>İLK 5 ALICI KURUM</span>
+                        {akd?.ilk5_alici_yuzde && (
+                          <span style={{ fontSize: 10, color: '#089981', fontWeight: 600 }}>Pay: %{fmt(akd.ilk5_alici_yuzde, 1)}</span>
+                        )}
+                      </div>
                       <div className="akd-liste">
                         {(akd?.alicilar || []).map((k, i) => (
                           <div key={i} className="akd-item">
-                            <span className="kurum">{k.kurum}</span>
-                            <div className="lot-pay">
-                              <span style={{ color: '#089981' }}>+{fmt(k.net_lot, 0)}</span>
-                              <span style={{ color: '#787B86' }}>%{fmt(k.yuzde, 1)}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                              <span className="kurum">{i + 1}. {k.kurum}</span>
+                              {k.maliyet && (
+                                <span style={{ fontSize: 9.5, color: '#787B86' }}>
+                                  Mlyt: {fmt(k.maliyet)} ₺
+                                </span>
+                              )}
+                            </div>
+                            <div className="lot-pay" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                              <span style={{ color: '#089981', fontWeight: 600 }}>+{fmt(k.net_lot, 0)} lot</span>
+                              <span style={{ color: '#787B86', fontSize: 10.5 }}>%{fmt(k.yuzde, 1)}</span>
                             </div>
                           </div>
                         ))}
+                        {akd?.diger_alici && (
+                          <div className="akd-item" style={{ opacity: 0.8, background: '#131722', border: '1px dashed #2A2E39' }}>
+                            <span className="kurum" style={{ fontStyle: 'italic', color: '#9CA3AF' }}>Diğer Kurumlar</span>
+                            <div className="lot-pay" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                              <span style={{ color: '#089981' }}>+{fmt(akd.diger_alici.net_lot, 0)} lot</span>
+                              <span style={{ color: '#787B86', fontSize: 10.5 }}>%{fmt(akd.diger_alici.yuzde, 1)}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* İlk 5 Satıcı */}
                     <div style={{ marginTop: 6 }}>
-                      <div className="derinlik-taraf-baslik satis" style={{ marginBottom: 4 }}>İLK 5 SATICI KURUM</div>
+                      <div className="derinlik-taraf-baslik satis" style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>İLK 5 SATICI KURUM</span>
+                        {akd?.ilk5_satici_yuzde && (
+                          <span style={{ fontSize: 10, color: '#F23645', fontWeight: 600 }}>Pay: %{fmt(akd.ilk5_satici_yuzde, 1)}</span>
+                        )}
+                      </div>
                       <div className="akd-liste">
                         {(akd?.saticilar || []).map((k, i) => (
                           <div key={i} className="akd-item">
-                            <span className="kurum">{k.kurum}</span>
-                            <div className="lot-pay">
-                              <span style={{ color: '#F23645' }}>-{fmt(k.net_lot, 0)}</span>
-                              <span style={{ color: '#787B86' }}>%{fmt(k.yuzde, 1)}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                              <span className="kurum">{i + 1}. {k.kurum}</span>
+                              {k.maliyet && (
+                                <span style={{ fontSize: 9.5, color: '#787B86' }}>
+                                  Mlyt: {fmt(k.maliyet)} ₺
+                                </span>
+                              )}
+                            </div>
+                            <div className="lot-pay" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                              <span style={{ color: '#F23645', fontWeight: 600 }}>-{fmt(k.net_lot, 0)} lot</span>
+                              <span style={{ color: '#787B86', fontSize: 10.5 }}>%{fmt(k.yuzde, 1)}</span>
                             </div>
                           </div>
                         ))}
+                        {akd?.diger_satici && (
+                          <div className="akd-item" style={{ opacity: 0.8, background: '#131722', border: '1px dashed #2A2E39' }}>
+                            <span className="kurum" style={{ fontStyle: 'italic', color: '#9CA3AF' }}>Diğer Kurumlar</span>
+                            <div className="lot-pay" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                              <span style={{ color: '#F23645' }}>-{fmt(akd.diger_satici.net_lot, 0)} lot</span>
+                              <span style={{ color: '#787B86', fontSize: 10.5 }}>%{fmt(akd.diger_satici.yuzde, 1)}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
