@@ -207,6 +207,11 @@ function ShellIc({ token, ad, soyad, onCikis }) {
         onCikis={onCikis}
         acik={sidebarAcik}
         kapat={() => setSidebarAcik(false)}
+        bagliBanka={bagliBanka}
+        onBankaModalAc={() => {
+          setSidebarAcik(false);
+          setBankaModalAcik(true);
+        }}
       />
 
       <div className="ana-alan">

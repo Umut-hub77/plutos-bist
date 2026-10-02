@@ -211,7 +211,7 @@ function PortfoyIslemleri({ api }) {
   );
 }
 
-export default function Sidebar({ api, ad, soyad, onCikis, acik, kapat }) {
+export default function Sidebar({ api, ad, soyad, onCikis, acik, kapat, onBankaModalAc, bagliBanka }) {
   const { hassasiyet, setHassasiyet, pPer, setPPer, periyotSecenekleri } = useAyar();
   const baharf = (ad || 'K')[0].toUpperCase();
 
@@ -271,6 +271,34 @@ export default function Sidebar({ api, ad, soyad, onCikis, acik, kapat }) {
             >
               {periyotSecenekleri.map(o => <option key={o}>{o}</option>)}
             </select>
+          </div>
+
+          {/* Açık Bankacılık & Gerçek Portföy Bağlantısı */}
+          <div style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 11, color: '#787b86' }}>Açık Bankacılık Entegrasyonu</label>
+            <button
+              type="button"
+              onClick={onBankaModalAc}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                background: bagliBanka ? 'rgba(8, 153, 129, 0.12)' : 'rgba(255, 152, 0, 0.12)',
+                border: `1px solid ${bagliBanka ? 'rgba(8, 153, 129, 0.4)' : 'rgba(255, 152, 0, 0.4)'}`,
+                color: bagliBanka ? '#089981' : '#FF9800',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span>🏛️</span>
+              <span>{bagliBanka ? `${bagliBanka} (Bağlı)` : 'Gerçek Banka Portföyü Bağla'}</span>
+            </button>
           </div>
 
           <PortfoyIslemleri api={api} />
