@@ -72,31 +72,31 @@ export default function Bildirimler({ api }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="bildirim-filtre-bar" style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%', paddingBottom: 4 }}>
             <button
               className={filtre === 'tumu' ? 'primary' : 'logout-btn'}
-              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6 }}
+              style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }}
               onClick={() => setFiltre('tumu')}
             >
               Tümü ({tumBildirimler.length})
             </button>
             <button
               className={filtre === 'fiyat' ? 'primary' : 'logout-btn'}
-              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6 }}
+              style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }}
               onClick={() => setFiltre('fiyat')}
             >
               Fiyat Alarmları ({liste?.length || 0})
             </button>
             <button
               className={filtre === 'seans' ? 'primary' : 'logout-btn'}
-              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6 }}
+              style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }}
               onClick={() => setFiltre('seans')}
             >
               Seans & Sistem ({sistemBildirimleri.length})
             </button>
             <button
               className="logout-btn"
-              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6 }}
+              style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, flexShrink: 0, whiteSpace: 'nowrap' }}
               onClick={yukle}
               disabled={yukleniyor}
             >

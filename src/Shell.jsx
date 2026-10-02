@@ -258,22 +258,22 @@ function ShellIc({ token, ad, soyad, onCikis }) {
         </div>
 
         {/* 2. TradingView x TradeAll Hibrit Kurumsal Workstation Header */}
-        <header className="header tradeall-workstation-header" style={{ background: '#131722', borderBottom: '1px solid #2A2E39', padding: '10px 20px' }}>
+        <header className="header tradeall-workstation-header" style={{ background: '#131722', borderBottom: '1px solid #2A2E39' }}>
           <div className="header-sol">
             <button className="logout-btn hamburger" onClick={() => setSidebarAcik(true)} aria-label="Menüyü aç">
               ☰
             </button>
-            <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Logo />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: 18, letterSpacing: 0.5, color: '#FFFFFF' }}>
+                  <span className="brand-logo-metin" style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: 18, letterSpacing: 0.5, color: '#FFFFFF' }}>
                     PLUTOS
                   </span>
                   <span className="tradeall-pro-tag">WORKSTATION</span>
                   <span className="tradingview-fusion-pill">TradingView × TradeAll</span>
                 </div>
-                <span style={{ fontSize: 9.5, color: '#787B86', letterSpacing: 0.5, fontWeight: 500 }}>
+                <span className="brand-alt-metin" style={{ fontSize: 9.5, color: '#787B86', letterSpacing: 0.5, fontWeight: 500 }}>
                   BIST KURUMSAL PORTFÖY & İŞLEM MASASI
                 </span>
               </div>
@@ -290,7 +290,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
             </div>
           </div>
 
-          <div className="header-sag" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="header-sag">
             <div
               className="seans-durum-rozet"
               style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}
@@ -321,29 +321,28 @@ function ShellIc({ token, ad, soyad, onCikis }) {
               title="TradeAll Hızlı Emir Masasını Aç (Tek tıkla BIST Pay Alış / Satış)"
             >
               <span className="simsek-ikon">⚡</span>
-              <span>Hızlı Al-Sat</span>
+              <span className="btn-metin">Hızlı Al-Sat</span>
             </button>
 
+            {/* Rehber Butonu */}
             <button
-              className="logout-btn"
+              className="logout-btn header-rehber-btn"
               onClick={() => setRehberAcik(true)}
-              title="Platformu nasıl kullanacağınızı anlatan görsel rehber"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                color: '#D7FF4E',
-                borderColor: 'rgba(215, 255, 78, 0.35)',
-                background: 'rgba(215, 255, 78, 0.08)',
-                fontWeight: 600,
-              }}
+              title="Platform Rehberi (Kullanım Kılavuzu)"
             >
-              <span>❓</span>
-              <span>Rehber</span>
+              <span className="ikon">❓</span>
+              <span className="btn-metin">Rehber</span>
             </button>
 
-            <button className="logout-btn" onClick={() => setBildirimAcik(a => !a)}>
-              🔔 Bildirimler{bildirimSayisi > 0 && <span className="sayac">{bildirimSayisi}</span>}
+            {/* Bildirimler Butonu */}
+            <button
+              className="logout-btn header-bildirim-btn"
+              onClick={() => setBildirimAcik(a => !a)}
+              title="Bildirim & Olay Merkezi"
+            >
+              <span className="ikon">🔔</span>
+              <span className="btn-metin">Bildirimler</span>
+              {bildirimSayisi > 0 && <span className="sayac">{bildirimSayisi}</span>}
             </button>
           </div>
         </header>
@@ -351,9 +350,13 @@ function ShellIc({ token, ad, soyad, onCikis }) {
         {/* 3. Ana Çalışma Alanı (Container) */}
         <main className="container" style={{ maxWidth: 1440 }}>
           {bildirimAcik ? (
-            <button className="logout-btn geri" onClick={() => setBildirimAcik(false)}>
-              ← Panele dön
-            </button>
+            <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <button className="logout-btn geri" onClick={() => setBildirimAcik(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13 }}>
+                <span>←</span>
+                <span>Ana Panele Dön</span>
+              </button>
+              <span style={{ fontSize: 12, color: '#787B86' }}>Bildirim & Olay Merkezi</span>
+            </div>
           ) : (
             <>
               {/* Ana Kategori Navigasyonu */}

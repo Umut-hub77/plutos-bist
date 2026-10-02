@@ -1818,6 +1818,23 @@ body, .mono, td, .fiyat, .deger, .canli-fiyat-degeri {
   font-size: 13px;
 }
 
+.header-rehber-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #D7FF4E;
+  border-color: rgba(215, 255, 78, 0.35);
+  background: rgba(215, 255, 78, 0.08);
+  font-weight: 600;
+}
+
+.header-bildirim-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+}
+
 /* 5. TradeAll Hızlı Emir Modalı */
 .tradeall-modal-backdrop {
   position: fixed;
@@ -2497,13 +2514,19 @@ button.primary:hover {
 
   /* Header & Kontroller */
   .header {
-    padding: 8px 12px !important;
+    padding: 6px 10px !important;
+    gap: 6px !important;
   }
   .header-sol {
-    gap: 8px !important;
-  }
-  .header-sag {
     gap: 6px !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+  }
+  .brand-logo-metin {
+    font-size: 16px !important;
+  }
+  .brand-alt-metin {
+    display: none !important;
   }
   .header-orta-seans {
     display: none !important;
@@ -2511,16 +2534,95 @@ button.primary:hover {
   .seans-durum-rozet {
     display: none !important;
   }
-  .cockpit-bakiye-kutu {
-    padding: 4px 8px !important;
-    font-size: 11px !important;
+  .header-sag {
+    gap: 5px !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
   }
-  .tradeall-hizli-emir-btn {
-    padding: 5px 8px !important;
-    font-size: 11.5px !important;
-  }
-  .tradeall-hizli-emir-btn span:last-child {
+
+  /* Portföy Bakiyesi Mobilde Kompakt */
+  .bakiye-etiket {
     display: none !important;
+  }
+  .cockpit-bakiye-kutu {
+    padding: 4px 7px !important;
+    font-size: 11px !important;
+    height: 32px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+    border-radius: 6px !important;
+  }
+
+  /* Hızlı Al-Sat Butonu Mobilde Kompakt */
+  .tradeall-hizli-emir-btn {
+    height: 32px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+    flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    border-radius: 6px !important;
+  }
+  .tradeall-hizli-emir-btn .btn-metin {
+    display: none !important;
+  }
+
+  /* Rehber Butonu Mobilde İkon Boyutunda ve Taşmayan */
+  .header-rehber-btn {
+    height: 32px !important;
+    width: 32px !important;
+    min-width: 32px !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    border-radius: 6px !important;
+    color: #D7FF4E !important;
+    border-color: rgba(215, 255, 78, 0.35) !important;
+    background: rgba(215, 255, 78, 0.08) !important;
+  }
+  .header-rehber-btn .btn-metin {
+    display: none !important;
+  }
+  .header-rehber-btn .ikon {
+    font-size: 15px !important;
+    line-height: 1 !important;
+  }
+
+  /* Bildirimler Butonu Mobilde İkon + Rozet Şeklinde */
+  .header-bildirim-btn {
+    height: 32px !important;
+    width: 32px !important;
+    min-width: 32px !important;
+    padding: 0 !important;
+    position: relative !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    border-radius: 6px !important;
+  }
+  .header-bildirim-btn .btn-metin {
+    display: none !important;
+  }
+  .header-bildirim-btn .ikon {
+    font-size: 15px !important;
+    line-height: 1 !important;
+  }
+  .header-bildirim-btn .sayac {
+    position: absolute !important;
+    top: -4px !important;
+    right: -4px !important;
+    font-size: 9.5px !important;
+    padding: 1px 4px !important;
+    min-width: 15px !important;
+    height: 15px !important;
+    line-height: 13px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 0 5px rgba(242, 54, 69, 0.6) !important;
   }
 
   /* Navigasyon: Mobilde Yatay Swipe (Kaydırılabilir) Sekme Çubuğu */
@@ -2650,12 +2752,44 @@ button.primary:hover {
 
   /* Modallar Tam Ekran Uyumu */
   .kurumsal-kart-modal,
-  .tradeall-modal-govde {
+  .tradeall-modal-govde,
+  .rehber-modal-kart {
     width: 95vw !important;
     max-width: 95vw !important;
-    max-height: 90vh !important;
+    max-height: 92vh !important;
     margin: auto !important;
-    padding: 14px !important;
+  }
+  .rehber-modal-baslik {
+    padding: 12px 14px 10px !important;
+  }
+  .rehber-modal-baslik h3 {
+    font-size: 15px !important;
+  }
+  .rehber-modal-govde {
+    padding: 12px 14px !important;
+    font-size: 12.5px !important;
+  }
+  .rehber-modal-alt {
+    padding: 10px 14px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .rehber-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+  .rehber-buton-grubu {
+    width: 100% !important;
+    justify-content: space-between !important;
+    display: flex !important;
+  }
+
+  /* Bildirim Filtre Barı */
+  .bildirim-filtre-bar {
+    scrollbar-width: none !important;
+  }
+  .bildirim-filtre-bar::-webkit-scrollbar {
+    display: none !important;
   }
 
   /* Yasal Uyarı Metni */
@@ -2668,8 +2802,34 @@ button.primary:hover {
 
 /* 3. Küçük Akıllı Telefonlar (max-width: 480px) */
 @media (max-width: 480px) {
-  .brand span {
+  .header {
+    padding: 5px 8px !important;
+  }
+  .brand-logo-metin {
     font-size: 15px !important;
+  }
+  .brand svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+  .cockpit-bakiye-kutu {
+    padding: 3px 6px !important;
+    font-size: 10px !important;
+    height: 30px !important;
+  }
+  .tradeall-hizli-emir-btn {
+    height: 30px !important;
+    padding: 0 6px !important;
+    font-size: 10.5px !important;
+  }
+  .header-rehber-btn,
+  .header-bildirim-btn {
+    height: 30px !important;
+    width: 30px !important;
+    min-width: 30px !important;
+  }
+  .container {
+    padding: 6px 8px !important;
   }
   .logout-btn {
     padding: 5px 8px !important;
@@ -2707,5 +2867,36 @@ button.primary:hover {
   }
   .ai-soru-input {
     font-size: 13px !important;
+  }
+
+  /* Rehber Modal Telefon Uyumu */
+  .rehber-modal-kart {
+    width: 97vw !important;
+    max-width: 97vw !important;
+    max-height: 94vh !important;
+  }
+  .rehber-modal-baslik {
+    padding: 10px 12px !important;
+  }
+  .rehber-modal-baslik h3 {
+    font-size: 14px !important;
+  }
+  .rehber-modal-govde {
+    padding: 10px 12px !important;
+    font-size: 12px !important;
+  }
+  .rehber-modal-alt {
+    padding: 8px 12px !important;
+    gap: 6px !important;
+  }
+  .rehber-buton-grubu {
+    width: 100% !important;
+    gap: 6px !important;
+  }
+  .rehber-buton-grubu button {
+    flex: 1 !important;
+    padding: 6px 4px !important;
+    font-size: 11.5px !important;
+    text-align: center !important;
   }
 }

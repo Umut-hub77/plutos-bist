@@ -11,7 +11,7 @@ const REHBER_ADIMLARI = [
         <p style={{ margin: 0, lineHeight: 1.6, color: '#D1D4DC' }}>
           Plutos; Borsa İstanbul (BIST), kıymetli madenler ve döviz piyasalarını tek bir kurumsal ekrandan canlı takip etmenizi, analiz yapmanızı ve <b>100.000 ₺ risksiz sanal bakiye</b> ile pratik yapmanızı sağlar.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 4 }}>
+        <div className="rehber-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, marginTop: 4 }}>
           <div style={{ background: '#1E222D', padding: 12, borderRadius: 6, border: '1px solid #2A2E39' }}>
             <span style={{ color: '#089981', fontWeight: 700, fontSize: 13, display: 'block', marginBottom: 4 }}>🟢 Yeni Başlayanlar İçin:</span>
             <span style={{ fontSize: 12, color: '#787B86' }}>Sade görünüm, şirketlerin tam isimleri, terim açıklamaları ve risksiz demo işlem.</span>
@@ -89,7 +89,7 @@ const REHBER_ADIMLARI = [
         <p style={{ margin: 0, lineHeight: 1.6, color: '#D1D4DC' }}>
           İleri düzey analiz yapmak istediğinizde üst menüden şu araçlara ulaşabilirsiniz:
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
+        <div className="rehber-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, fontSize: 12 }}>
           <div style={{ background: '#1E222D', padding: 8, borderRadius: 4 }}>
             <b>Stratejik Analiz:</b> TradingView mum grafiği, 5 kademe derinlik ve aracı kurum dağılımı (AKD).
           </div>
@@ -175,10 +175,11 @@ export default function TutorialModal({ acik, kapat, onAdimGit }) {
       }}
     >
       <div
-        className="kurumsal-kart"
+        className="kurumsal-kart rehber-modal-kart"
         style={{
           width: '100%',
           maxWidth: 620,
+          maxHeight: '92vh',
           background: '#131722',
           border: '1px solid #2A2E39',
           borderRadius: 12,
@@ -204,8 +205,9 @@ export default function TutorialModal({ acik, kapat, onAdimGit }) {
 
         {/* Modal Başlık Alanı */}
         <div
+          className="rehber-modal-baslik"
           style={{
-            padding: '20px 24px 14px',
+            padding: '16px 20px 12px',
             borderBottom: '1px solid #1E222D',
             display: 'flex',
             justifyContent: 'space-between',
@@ -276,21 +278,22 @@ export default function TutorialModal({ acik, kapat, onAdimGit }) {
         </div>
 
         {/* Modal Gövdesi */}
-        <div style={{ padding: '20px 24px', flex: 1, minHeight: 200 }}>
+        <div className="rehber-modal-govde" style={{ padding: '16px 20px', flex: 1, minHeight: 180, overflowY: 'auto' }}>
           {mevcut.icerik}
         </div>
 
         {/* Modal Alt Gezinme Barı */}
         <div
+          className="rehber-modal-alt"
           style={{
-            padding: '14px 24px',
+            padding: '12px 20px',
             background: '#0E1118',
             borderTop: '1px solid #1E222D',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: 12,
+            gap: 10,
           }}
         >
           {/* Sol: Bir Daha Gösterme Checkbox */}
@@ -311,16 +314,16 @@ export default function TutorialModal({ acik, kapat, onAdimGit }) {
               onChange={e => setBirDahaGosterme(e.target.checked)}
               style={{ cursor: 'pointer', accentColor: '#2962FF' }}
             />
-            <span>Bir daha otomatik gösterme</span>
+            <span>Bir daha gösterme</span>
           </label>
 
           {/* Sağ: İlerleme & Geçiş Butonları */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="rehber-buton-grubu" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {adim > 0 && (
               <button
                 className="arac-btn"
                 onClick={onceki}
-                style={{ padding: '7px 16px', fontSize: 12.5 }}
+                style={{ padding: '6px 14px', fontSize: 12 }}
               >
                 ← Geri
               </button>
@@ -329,7 +332,7 @@ export default function TutorialModal({ acik, kapat, onAdimGit }) {
             <button
               className="logout-btn"
               onClick={tamamlaVeKapat}
-              style={{ padding: '7px 14px', fontSize: 12 }}
+              style={{ padding: '6px 12px', fontSize: 12 }}
             >
               Atla
             </button>
@@ -338,8 +341,8 @@ export default function TutorialModal({ acik, kapat, onAdimGit }) {
               className="arac-btn aktif"
               onClick={sonraki}
               style={{
-                padding: '7px 20px',
-                fontSize: 13,
+                padding: '6px 18px',
+                fontSize: 12.5,
                 fontWeight: 600,
                 background: sonAdim ? '#089981' : '#2962FF',
                 borderColor: sonAdim ? '#089981' : '#2962FF',
