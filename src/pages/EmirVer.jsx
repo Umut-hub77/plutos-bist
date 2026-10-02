@@ -14,10 +14,15 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
   const [piyasaFiyat, setPiyasaFiyat] = useState(null);
   const [mesaj, setMesaj] = useState(null);
   const [islemler, setIslemler] = useState([]);
+  const [bekleyenler, setBekleyenler] = useState([]);
   const [bakiye, setBakiye] = useState(null);
+  const [blokeBakiye, setBlokeBakiye] = useState(0);
   const [bekle, setBekle] = useState(false);
   const [derinlik, setDerinlik] = useState(null);
   const [pozisyon, setPozisyon] = useState(null);
+  const [accountMode, setAccountMode] = useState('demo');
+  const [bagliBanka, setBagliBanka] = useState('');
+  const [aktifTab, setAktifTab] = useState('bekleyen'); // 'bekleyen' | 'gecmis'
 
   const fiyatVeDerinlikGetir = useCallback(async (sembol) => {
     try {
@@ -33,6 +38,10 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
       if (d) setDerinlik(d);
       if (p) {
         setBakiye(p.virtual_cash);
+        setBlokeBakiye(p.blocked_cash || 0);
+        setBekleyenler(p.pending_orders || []);
+        setAccountMode(p.account_mode || 'demo');
+        setBagliBanka(p.real_bank || '');
         const poz = p.portfolio?.[sembol.toUpperCase()] || p.pozisyonlar?.find(x => x.hisse === sembol.toUpperCase()) || null;
         setPozisyon(poz);
       }
@@ -78,8 +87,28 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
     setTip('Limit');
   };
 
+  const demoModaGec = async () => {
+    try {
+      await api('/api/account/switch-mode', { method: 'POST', govde: { mode: 'demo' } });
+      setAccountMode('demo');
+      fiyatVeDerinlikGetir(hisse);
+      bildirimYenile?.();
+      portfoyDegisti?.();
+    } catch {
+      /* sessiz */
+    }
+  };
+
   const gonder = async () => {
     setMesaj(null);
+    if (accountMode === 'real') {
+      setMesaj({
+        tur: 'hata',
+        metin: 'Gerçek hesap güvenliği gereği emir gönderimi kapalıdır. Lütfen Demo Hesaba geçiniz.',
+      });
+      return;
+    }
+
     const fiyat = tip === 'Piyasa' ? piyasaFiyat : parseFloat(limit);
     if (!fiyat || isNaN(fiyat) || fiyat <= 0) {
       setMesaj({ tur: 'hata', metin: 'Lütfen geçerli bir işlem fiyatı belirleyin.' });
@@ -95,21 +124,47 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
     try {
       const r = await api('/api/order', {
         method: 'POST',
-        govde: { hisse: hisse.toUpperCase(), yon, lot: lotMiktari, fiyat },
+        govde: {
+          hisse: hisse.toUpperCase(),
+          yon,
+          lot: lotMiktari,
+          fiyat,
+          tip: tip === 'Piyasa' ? 'Piyasa' : 'Limit',
+          hesap_turu: accountMode,
+        },
       });
       setBakiye(r.virtual_cash);
-      setIslemler(r.trade_log);
+      setBlokeBakiye(r.blocked_cash || 0);
+      setBekleyenler(r.pending_orders || []);
+      setIslemler(r.trade_log || []);
       setMesaj({
         tur: 'ok',
-        metin: `BIST Emri Gerçekleşti: ${lotMiktari} Lot ${hisse.toUpperCase()} ${yon} @ ${fmt(fiyat)} ₺`,
+        metin: r.mesaj || `BIST Emri İşlendi: ${lotMiktari} Lot ${hisse.toUpperCase()} ${yon} @ ${fmt(fiyat)} ₺`,
       });
       fiyatVeDerinlikGetir(hisse);
+      gecmisYukle();
       bildirimYenile?.();
       portfoyDegisti?.();
     } catch (e) {
       setMesaj({ tur: 'hata', metin: e.message || 'Emir iletilemedi.' });
     } finally {
       setBekle(false);
+    }
+  };
+
+  const emirIptalEt = async (orderId) => {
+    try {
+      const r = await api(`/api/order/cancel/${orderId}`, { method: 'POST' });
+      setBakiye(r.virtual_cash);
+      setBlokeBakiye(r.blocked_cash || 0);
+      setBekleyenler(r.pending_orders || []);
+      setMesaj({ tur: 'ok', metin: r.mesaj || 'Limit emri başarıyla iptal edildi.' });
+      gecmisYukle();
+      fiyatVeDerinlikGetir(hisse);
+      bildirimYenile?.();
+      portfoyDegisti?.();
+    } catch (e) {
+      setMesaj({ tur: 'hata', metin: e.message || 'Emir iptal edilemedi.' });
     }
   };
 
@@ -120,7 +175,43 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* 1. ÜST HİSSE VE PİYASA BİLGİ ŞERİDİ */}
+      {/* 1. GERÇEK HESAP SALT OKUNUR UYARI ŞERİDİ */}
+      {accountMode === 'real' && (
+        <div
+          style={{
+            background: 'rgba(255, 152, 0, 0.1)',
+            border: '1.5px solid rgba(255, 152, 0, 0.4)',
+            borderRadius: 8,
+            padding: '12px 18px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 24 }}>🔒</span>
+            <div>
+              <div style={{ color: '#FFFFFF', fontWeight: 700, fontSize: 14 }}>
+                Gerçek Banka Hesabı Aktif: <span style={{ color: '#FF9800' }}>{bagliBanka || 'Banka'} (Salt Okunur İzleme Modu)</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#B2B5BE' }}>
+                SPK ve Açık Bankacılık protokolleri uyarınca bu arayüzden doğrudan gerçek emir iletilemez. Alım/satım denemeleri için Demo Hesaba geçiniz.
+              </div>
+            </div>
+          </div>
+          <button
+            className="arac-btn aktif"
+            onClick={demoModaGec}
+            style={{ padding: '8px 16px', fontSize: 12.5, fontWeight: 700, background: '#2962FF', borderColor: '#2962FF' }}
+          >
+            🎮 Demo Hesaba Geç ve İşlem Yap
+          </button>
+        </div>
+      )}
+
+      {/* 2. ÜST HİSSE VE PİYASA BİLGİ ŞERİDİ */}
       <div className="kurumsal-kart" style={{ padding: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -138,91 +229,125 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
                   color: '#FFFFFF',
                   fontWeight: 700,
                   fontSize: 15,
-                  padding: '8px 12px',
+                  padding: '7px 12px',
                   borderRadius: 6,
+                  width: '100%',
+                  fontFamily: 'JetBrains Mono, monospace',
                 }}
               >
-                {(t?.tickers || [hisse]).map(s => <option key={s} value={s}>{s}</option>)}
+                {t.tickers.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
               </select>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: 18, fontWeight: 700, color: '#FFFFFF', fontFamily: 'Space Grotesk' }}>
-                {hisse} • {piyasaFiyat ? fmt(piyasaFiyat) + ' ₺' : 'Fiyat Alınıyor…'}
-              </span>
-              <span style={{ fontSize: 11, color: '#787B86' }}>BIST Pay Piyasası • Yıldız Pazar</span>
+            <div>
+              <div style={{ fontSize: 11, color: '#787B86', textTransform: 'uppercase' }}>BIST 100 Pay Senedi</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#FFFFFF' }}>{hisse} Spot İşlem</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <button
-              className="arac-btn aktif"
-              onClick={() => onModulDegistir?.('Analiz', 'Stratejik Analiz')}
-              style={{ fontSize: 12 }}
-            >
-              📊 Stratejik Grafik Masasını Aç
-            </button>
-            <div className="seans-durum-rozet">🟢 Seans Açık</div>
+          <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: '#787B86' }}>GÜNCEL PİYASA FİYATI</div>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'JetBrains Mono', color: '#2962FF' }}>
+                {piyasaFiyat ? `${fmt(piyasaFiyat)} ₺` : 'Yükleniyor…'}
+              </div>
+            </div>
+            {pozisyon && (
+              <div style={{ textAlign: 'right', borderLeft: '1px solid #1E222D', paddingLeft: 16 }}>
+                <div style={{ fontSize: 11, color: '#787B86' }}>PORTFÖYDEKİ LOT</div>
+                <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'JetBrains Mono', color: '#D7FF4E' }}>
+                  {fmt(pozisyon.lot, 0)} Lot
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 2. İKİ KOLONLU İŞLEM MASASI: SOL EMİR BİLETİ - SAĞ 5K DERİNLİK */}
+      {/* 3. ANA EMİR MASASI (SOL: GİRİŞ PANELİ, SAĞ: DERİNLİK) */}
       <div className="terminal-iki-kolon">
-        {/* SOL: EMİR GİRİŞ FORMU */}
-        <div className="kurumsal-kart" style={{ flex: 1.3, padding: 20 }}>
-          <div className="emir-yon-secici" style={{ marginBottom: 14 }}>
+        {/* SOL: EMİR FORMU */}
+        <div className="kurumsal-kart" style={{ flex: 1.2, padding: 18 }}>
+          <div className="emir-yon-secici">
             <button
               className={`emir-yon-btn alis ${yon === 'AL' ? 'aktif' : ''}`}
               onClick={() => setYon('AL')}
             >
-              ALIŞ (BUY)
+              🟢 ALIŞ (BUY)
             </button>
             <button
               className={`emir-yon-btn satis ${yon === 'SAT' ? 'aktif' : ''}`}
               onClick={() => setYon('SAT')}
             >
-              SATIŞ (SELL)
+              🔴 SATIŞ (SELL)
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-            <div className="emir-alan-grup">
-              <label>Emir Tipi</label>
-              <div className="segment" style={{ marginTop: 2 }}>
-                {['Piyasa', 'Limit', 'Zarar Durdur'].map(tp => (
-                  <button key={tp} className={tip === tp ? 'aktif' : ''} onClick={() => setTip(tp)}>
-                    {tp}
-                  </button>
-                ))}
-              </div>
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, color: '#787B86', textTransform: 'uppercase', fontWeight: 600 }}>
+              Emir Tipi
+            </label>
+            <div className="segment" style={{ marginTop: 4 }}>
+              {['Limit', 'Piyasa'].map(et => (
+                <button
+                  key={et}
+                  className={tip === et ? 'aktif' : ''}
+                  onClick={() => setTip(et)}
+                >
+                  {et} Emri
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div className="emir-alan-grup">
-              <label>{tip === 'Piyasa' ? 'Piyasa Fiyatı' : 'Limit Fiyat (₺)'}</label>
-              <div className="emir-input-wrap">
+          {tip === 'Limit' && (
+            <div style={{ marginTop: 14 }}>
+              <label style={{ fontSize: 11, color: '#787B86', textTransform: 'uppercase', fontWeight: 600 }}>
+                Limit Fiyat (₺)
+              </label>
+              <div className="emir-input-wrap" style={{ marginTop: 4 }}>
                 <input
                   type="number"
                   step="0.05"
-                  disabled={tip === 'Piyasa'}
-                  value={tip === 'Piyasa' ? (piyasaFiyat || '') : limit}
+                  value={limit}
                   onChange={e => setLimit(e.target.value)}
                   placeholder={String(piyasaFiyat || '')}
                 />
                 <span className="birim">₺</span>
               </div>
-            </div>
-          </div>
-
-          <div className="emir-alan-grup" style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label>Lot Miktarı</label>
-              {pozisyon && (
-                <span style={{ fontSize: 11, color: '#787B86' }}>
-                  Elinizdeki: <b style={{ color: '#FFFFFF' }}>{pozisyon.lot} Lot</b> (Maliyet: {fmt(pozisyon.maliyet)} ₺)
-                </span>
+              {piyasaFiyat && (
+                <div style={{ fontSize: 11, marginTop: 4 }}>
+                  {yon === 'AL' && parseFloat(limit) < piyasaFiyat && (
+                    <span style={{ color: '#FF9800' }}>
+                      ⏳ Limit fiyat piyasadan düşük ({fmt(limit)} &lt; {fmt(piyasaFiyat)} ₺). Fiyat düşene kadar tahtada bekleyecek, teminat bloke edilecektir.
+                    </span>
+                  )}
+                  {yon === 'AL' && parseFloat(limit) >= piyasaFiyat && (
+                    <span style={{ color: '#089981' }}>
+                      ⚡ Limit fiyat piyasayı karşılıyor ({fmt(limit)} &ge; {fmt(piyasaFiyat)} ₺). Emir anında piyasa fiyatından gerçekleşir.
+                    </span>
+                  )}
+                  {yon === 'SAT' && parseFloat(limit) > piyasaFiyat && (
+                    <span style={{ color: '#FF9800' }}>
+                      ⏳ Limit satış fiyatı piyasanın üzerinde ({fmt(limit)} &gt; {fmt(piyasaFiyat)} ₺). Fiyat yükselene kadar tahtada bekleyecektir.
+                    </span>
+                  )}
+                  {yon === 'SAT' && parseFloat(limit) <= piyasaFiyat && (
+                    <span style={{ color: '#089981' }}>
+                      ⚡ Limit satış fiyatı piyasayı karşılıyor ({fmt(limit)} &le; {fmt(piyasaFiyat)} ₺). Emir anında gerçekleşir.
+                    </span>
+                  )}
+                </div>
               )}
             </div>
-            <div className="emir-input-wrap">
+          )}
+
+          <div style={{ marginTop: 14 }}>
+            <label style={{ fontSize: 11, color: '#787B86', textTransform: 'uppercase', fontWeight: 600 }}>
+              Lot Adedi
+            </label>
+            <div className="emir-input-wrap" style={{ marginTop: 4 }}>
               <input
                 type="number"
                 min="1"
@@ -239,44 +364,57 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
               ))}
               <button
                 className="lot-hizli-btn"
-                style={{ color: '#D7FF4E' }}
+                style={{ color: '#D7FF4E', fontWeight: 700 }}
                 onClick={() => {
-                  if (yon === 'AL' && aktifFiyat > 0 && bakiye > 0) {
-                    setLot(Math.max(1, Math.floor(bakiye / aktifFiyat)));
-                  } else if (yon === 'SAT' && pozisyon?.lot) {
+                  if (yon === 'SAT' && pozisyon?.lot) {
                     setLot(pozisyon.lot);
+                  } else if (aktifFiyat > 0 && bakiye > 0) {
+                    setLot(Math.max(1, Math.floor(bakiye / aktifFiyat)));
                   }
                 }}
               >
-                Max
+                MAX
               </button>
             </div>
           </div>
 
-          {/* Hesap Özeti */}
-          <div className="emir-ozet-kutusu" style={{ marginBottom: 14 }}>
+          <div className="emir-ozet-kutusu" style={{ marginTop: 14 }}>
             <div className="emir-ozet-satir">
-              <span>İşlem Tutarı:</span>
+              <span>İşlem Hacmi</span>
               <span className="deger">{fmt(islemTutari)} ₺</span>
             </div>
             <div className="emir-ozet-satir">
-              <span>BIST Borsa Payı ve Komisyon (%0.15):</span>
+              <span>BIST Takas & Kurum Payı (‰1.5)</span>
               <span className="deger">{fmt(komisyonTutari)} ₺</span>
             </div>
             <div className="emir-ozet-satir toplam">
-              <span>Net {yon === 'AL' ? 'Ödenecek' : 'Hesaba Geçecek'} Tutar:</span>
-              <span className="deger">{fmt(toplamTutar)} ₺</span>
+              <span>Net Tahmini Tutar</span>
+              <span className="deger" style={{ color: yon === 'AL' ? '#089981' : '#F23645' }}>
+                {fmt(toplamTutar)} ₺
+              </span>
             </div>
           </div>
 
-          <button
-            className={`emir-gonder-btn ${yon === 'AL' ? 'alis' : 'satis'}`}
-            onClick={gonder}
-            disabled={bekle}
-            style={{ fontSize: 15 }}
-          >
-            {bekle ? 'BIST İletiliyor…' : `BIST ${hisse} ${yon} EMRİ GÖNDER`}
-          </button>
+          {accountMode === 'real' ? (
+            <div style={{ marginTop: 14, textAlign: 'center' }}>
+              <button
+                className="arac-btn aktif"
+                onClick={demoModaGec}
+                style={{ width: '100%', padding: '12px', fontSize: 14, background: '#2962FF', borderColor: '#2962FF', fontWeight: 700 }}
+              >
+                🎮 Demo Hesaba Geç ve Emir Ver
+              </button>
+            </div>
+          ) : (
+            <button
+              className={`emir-gonder-btn ${yon === 'AL' ? 'alis' : 'satis'}`}
+              onClick={gonder}
+              disabled={bekle}
+              style={{ fontSize: 15, marginTop: 14 }}
+            >
+              {bekle ? 'BIST İletiliyor…' : `BIST ${hisse} ${yon} EMRİ GÖNDER (${tip})`}
+            </button>
+          )}
 
           {mesaj && (
             <div className={mesaj.tur === 'ok' ? 'ok-msg' : 'error-msg'} style={{ marginTop: 10 }}>
@@ -286,7 +424,10 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: '#787B86', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1E222D' }}>
             <span>Kullanılabilir Sanal Bakiye: <b style={{ color: '#FFFFFF', fontFamily: 'JetBrains Mono' }}>{fmt(bakiye, 0)} ₺</b></span>
-            <span>Mod: <b style={{ color: '#089981' }}>Demo BIST İşlem Masası</b></span>
+            {blokeBakiye > 0 && (
+              <span>Bloke Teminat: <b style={{ color: '#FF9800', fontFamily: 'JetBrains Mono' }}>{fmt(blokeBakiye, 0)} ₺</b></span>
+            )}
+            <span>Mod: <b style={{ color: accountMode === 'real' ? '#FF9800' : '#089981' }}>{accountMode === 'real' ? `Gerçek (${bagliBanka})` : 'Demo BIST'}</b></span>
           </div>
         </div>
 
@@ -328,54 +469,137 @@ export default function EmirVer({ api, onModulDegistir, bildirimYenile }) {
           </div>
 
           <p style={{ fontSize: 11, color: '#787B86', marginTop: 12 }}>
-            💡 İpucu: Herhangi bir derinlik kademesine tıkladığınızda emir limit fiyatı otomatik olarak o kademeyle doldurulur.
+            💡 İpucu: Derinlik tablosundaki fiyatlara tıklayarak doğrudan limit fiyatınızı belirleyebilirsiniz.
           </p>
         </div>
       </div>
 
-      {/* 3. GERÇEKLEŞEN İŞLEMLER VE EMİR GEÇMİŞİ */}
+      {/* 4. BEKLEYEN LİMİT EMİRLER VE GEÇMİŞ TABLOLARI */}
       <div className="kurumsal-kart" style={{ padding: 18 }}>
-        <h4 style={{ color: '#FFFFFF', margin: '0 0 12px' }}>⏱️ Son Gerçekleşen Emir Geçmişi</h4>
-        <div style={{ overflowX: 'auto' }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Zaman</th>
-                <th>Hisse</th>
-                <th>Yön</th>
-                <th>Lot</th>
-                <th>İşlem Fiyatı</th>
-                <th>Toplam Tutar</th>
-                <th>Durum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {islemler.length ? (
-                islemler.slice(0, 15).map((islem, idx) => (
-                  <tr key={idx}>
-                    <td style={{ color: '#787B86' }}>{islem.zaman}</td>
-                    <td style={{ fontWeight: 700, color: '#FFFFFF' }}>{islem.hisse}</td>
-                    <td>
-                      <span className={islem.yon === 'AL' ? 'rozet-al' : 'rozet-sat'}>
-                        {islem.yon}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{fmt(islem.lot, 0)}</td>
-                    <td>{fmt(islem.fiyat)} ₺</td>
-                    <td style={{ fontWeight: 700, color: '#FFFFFF' }}>{fmt(islem.tutar)} ₺</td>
-                    <td><span className="rozet tetik">Gerçekleşti</span></td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={7} className="empty-hint" style={{ padding: 20, textAlign: 'center' }}>
-                    Henüz gerçekleşmiş bir demo işlem kaydı bulunmuyor.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14, borderBottom: '1px solid #1E222D', paddingBottom: 10 }}>
+          <button
+            className={`arac-btn ${aktifTab === 'bekleyen' ? 'aktif' : ''}`}
+            onClick={() => setAktifTab('bekleyen')}
+            style={{ fontSize: 12, padding: '6px 14px' }}
+          >
+            ⏳ Bekleyen Limit Emirlerim ({bekleyenler.length})
+          </button>
+          <button
+            className={`arac-btn ${aktifTab === 'gecmis' ? 'aktif' : ''}`}
+            onClick={() => setAktifTab('gecmis')}
+            style={{ fontSize: 12, padding: '6px 14px' }}
+          >
+            ⏱️ Gerçekleşen Emir Geçmişi ({islemler.length})
+          </button>
         </div>
+
+        {aktifTab === 'bekleyen' ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Tarih</th>
+                  <th>Hisse</th>
+                  <th>Yön</th>
+                  <th>Tip</th>
+                  <th>Lot</th>
+                  <th>Hedef Fiyat</th>
+                  <th>Piyasa Fiyatı</th>
+                  <th>Bloke Tutar</th>
+                  <th>Durum</th>
+                  <th style={{ textAlign: 'right' }}>İşlem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bekleyenler.length ? (
+                  bekleyenler.map(em => (
+                    <tr key={em.id}>
+                      <td style={{ color: '#787B86', fontSize: 11.5 }}>{em.tarih}</td>
+                      <td style={{ fontWeight: 700, color: '#FFFFFF' }}>{em.hisse}</td>
+                      <td>
+                        <span className={em.yon === 'AL' ? 'rozet-al' : 'rozet-sat'}>{em.yon}</span>
+                      </td>
+                      <td><span className="rozet">{em.tip || 'Limit'}</span></td>
+                      <td style={{ fontWeight: 600 }}>{fmt(em.lot, 0)}</td>
+                      <td style={{ color: '#2962FF', fontWeight: 700 }}>{fmt(em.fiyat)} ₺</td>
+                      <td style={{ color: '#D1D4DC' }}>{fmt(em.anlik_fiyat || piyasaFiyat)} ₺</td>
+                      <td style={{ fontWeight: 700, color: '#FF9800' }}>{fmt(em.tutar)} ₺</td>
+                      <td><span className="rozet" style={{ background: 'rgba(255,152,0,0.15)', color: '#FF9800', borderColor: 'rgba(255,152,0,0.3)' }}>Tahtada Bekliyor</span></td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          className="arac-btn"
+                          onClick={() => emirIptalEt(em.id)}
+                          style={{
+                            background: 'rgba(242,54,69,0.15)',
+                            color: '#F23645',
+                            borderColor: 'rgba(242,54,69,0.4)',
+                            fontSize: 11,
+                            padding: '4px 10px',
+                          }}
+                        >
+                          ✕ İptal Et
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={10} className="empty-hint" style={{ padding: 24, textAlign: 'center' }}>
+                      Şu an BIST tahtasında bekleyen aktif bir limit emriniz bulunmuyor. Piyasa fiyatının altında alış veya üstünde satış girdiğinizde emriniz burada listelenir.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Zaman</th>
+                  <th>Hisse</th>
+                  <th>Yön</th>
+                  <th>Tip</th>
+                  <th>Lot</th>
+                  <th>İşlem Fiyatı</th>
+                  <th>Toplam Tutar</th>
+                  <th>Durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {islemler.length ? (
+                  islemler.slice(0, 15).map((islem, idx) => (
+                    <tr key={idx}>
+                      <td style={{ color: '#787B86', fontSize: 11.5 }}>{islem.zaman}</td>
+                      <td style={{ fontWeight: 700, color: '#FFFFFF' }}>{islem.hisse}</td>
+                      <td>
+                        <span className={islem.yon === 'AL' ? 'rozet-al' : 'rozet-sat'}>
+                          {islem.yon}
+                        </span>
+                      </td>
+                      <td><span className="rozet">{islem.tip || 'Limit'}</span></td>
+                      <td style={{ fontWeight: 600 }}>{fmt(islem.lot, 0)}</td>
+                      <td>{fmt(islem.fiyat)} ₺</td>
+                      <td style={{ fontWeight: 700, color: '#FFFFFF' }}>{fmt(islem.tutar)} ₺</td>
+                      <td>
+                        <span className={`rozet ${islem.durum?.includes('İPTAL') ? 'sat' : islem.durum?.includes('BEKLİYOR') ? '' : 'tetik'}`}>
+                          {islem.durum || 'Gerçekleşti'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="empty-hint" style={{ padding: 20, textAlign: 'center' }}>
+                      Henüz gerçekleşmiş bir işlem kaydı bulunmuyor.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

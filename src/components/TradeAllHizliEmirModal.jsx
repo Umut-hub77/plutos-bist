@@ -20,6 +20,8 @@ export default function TradeAllHizliEmirModal({ acik, kapat, api, bildirimYenil
   const [derinlik, setDerinlik] = useState(null);
   const [bekle, setBekle] = useState(false);
   const [mesaj, setMesaj] = useState(null);
+  const [accountMode, setAccountMode] = useState('demo');
+  const [bagliBanka, setBagliBanka] = useState('');
 
   useEffect(() => {
     if (baslangicHisse) {
@@ -38,11 +40,13 @@ export default function TradeAllHizliEmirModal({ acik, kapat, api, bildirimYenil
 
       if (fRes?.fiyat) {
         setPiyasaFiyat(fRes.fiyat);
-        setFiyat(fRes.fiyat);
+        setFiyat(prev => prev || fRes.fiyat);
       }
       if (dRes) setDerinlik(dRes);
       if (pRes) {
         setBakiye(pRes.virtual_cash);
+        setAccountMode(pRes.account_mode || 'demo');
+        setBagliBanka(pRes.real_bank || '');
         const poz = pRes.portfolio?.[kod] || pRes.pozisyonlar?.find(x => x.hisse === kod) || null;
         setPozisyon(poz);
       }
@@ -65,8 +69,25 @@ export default function TradeAllHizliEmirModal({ acik, kapat, api, bildirimYenil
   const komisyonTutari = islemTutari * 0.0015;
   const toplamGereken = yon === 'AL' ? islemTutari + komisyonTutari : islemTutari - komisyonTutari;
 
+  const demoModaGec = async () => {
+    try {
+      await api('/api/account/switch-mode', { method: 'POST', govde: { mode: 'demo' } });
+      setAccountMode('demo');
+      veriGetir(hisse);
+      bildirimYenile?.();
+      portfoyDegisti?.();
+    } catch {
+      /* sessiz */
+    }
+  };
+
   const emirGonder = async () => {
     setMesaj(null);
+    if (accountMode === 'real') {
+      setMesaj({ tur: 'hata', metin: 'Gerçek banka hesabı salt okunurdur. İşlem yapmak için lütfen Demo Hesaba geçiniz.' });
+      return;
+    }
+
     const gonderilecekFiyat = tip === 'Piyasa' ? piyasaFiyat : parseFloat(fiyat);
     if (!gonderilecekFiyat || isNaN(gonderilecekFiyat) || gonderilecekFiyat <= 0) {
       setMesaj({ tur: 'hata', metin: 'Lütfen geçerli bir işlem fiyatı girin.' });
@@ -82,12 +103,19 @@ export default function TradeAllHizliEmirModal({ acik, kapat, api, bildirimYenil
     try {
       const r = await api('/api/order', {
         method: 'POST',
-        govde: { hisse: hisse.toUpperCase(), yon, lot: lotSayisi, fiyat: gonderilecekFiyat },
+        govde: {
+          hisse: hisse.toUpperCase(),
+          yon,
+          lot: lotSayisi,
+          fiyat: gonderilecekFiyat,
+          tip: tip === 'Piyasa' ? 'Piyasa' : 'Limit',
+          hesap_turu: accountMode,
+        },
       });
       setBakiye(r.virtual_cash);
       setMesaj({
         tur: 'ok',
-        metin: `BIST İletildi: ${lotSayisi} Lot ${hisse.toUpperCase()} ${yon} @ ${fmt(gonderilecekFiyat)} ₺`,
+        metin: r.mesaj || `BIST İletildi: ${lotSayisi} Lot ${hisse.toUpperCase()} ${yon} @ ${fmt(gonderilecekFiyat)} ₺`,
       });
       veriGetir(hisse);
       bildirimYenile?.();
@@ -218,6 +246,22 @@ export default function TradeAllHizliEmirModal({ acik, kapat, api, bildirimYenil
                   />
                   <span className="birim">₺</span>
                 </div>
+                {tip === 'Limit' && piyasaFiyat && (
+                  <div style={{ fontSize: 10.5, color: '#787B86', marginTop: 4 }}>
+                    {yon === 'AL' && parseFloat(fiyat) < piyasaFiyat && (
+                      <span style={{ color: '#FF9800' }}>⏳ Limit fiyat piyasanın altında ({fmt(fiyat)} &lt; {fmt(piyasaFiyat)} ₺). Emir tahtaya iletilecek ve teminat bloke edilecektir.</span>
+                    )}
+                    {yon === 'AL' && parseFloat(fiyat) >= piyasaFiyat && (
+                      <span style={{ color: '#089981' }}>⚡ Limit alış fiyatı piyasayı karşıladığı için anında gerçekleşir.</span>
+                    )}
+                    {yon === 'SAT' && parseFloat(fiyat) > piyasaFiyat && (
+                      <span style={{ color: '#FF9800' }}>⏳ Limit satış fiyatı piyasanın üzerinde ({fmt(fiyat)} &gt; {fmt(piyasaFiyat)} ₺). Fiyat yükselene kadar tahtada bekler.</span>
+                    )}
+                    {yon === 'SAT' && parseFloat(fiyat) <= piyasaFiyat && (
+                      <span style={{ color: '#089981' }}>⚡ Limit satış fiyatı piyasayı karşıladığı için anında gerçekleşir.</span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -284,15 +328,35 @@ export default function TradeAllHizliEmirModal({ acik, kapat, api, bildirimYenil
               </div>
             </div>
 
-            {/* Gönder Butonu */}
-            <button
-              className={`emir-gonder-btn ${yon === 'AL' ? 'alis' : 'satis'}`}
-              style={{ marginTop: 14 }}
-              onClick={emirGonder}
-              disabled={bekle}
-            >
-              {bekle ? 'BIST Emri İletiliyor…' : `BIST ${hisse} ${yon} EMRİ GÖNDER`}
-            </button>
+            {/* Gerçek Hesap vs Demo Kontrolü */}
+            {accountMode === 'real' ? (
+              <div style={{ background: 'rgba(255, 152, 0, 0.12)', border: '1px solid rgba(255, 152, 0, 0.3)', borderRadius: 8, padding: 12, marginTop: 14 }}>
+                <div style={{ color: '#FF9800', fontWeight: 700, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>🔒</span>
+                  <span>Gerçek Hesap Salt Okunur Modda {bagliBanka ? `(${bagliBanka})` : ''}</span>
+                </div>
+                <div style={{ color: '#B2B5BE', fontSize: 11.5, lineHeight: 1.4, marginBottom: 10 }}>
+                  Güvenlik gerekçesiyle gerçek banka hesabınız üzerinden doğrudan işlem yapılamaz. Emir simülasyonları için Demo Hesaba geçebilirsiniz.
+                </div>
+                <button
+                  type="button"
+                  className="arac-btn aktif"
+                  onClick={demoModaGec}
+                  style={{ width: '100%', padding: '9px 12px', fontSize: 12, background: '#2962FF', borderColor: '#2962FF', fontWeight: 600 }}
+                >
+                  🎮 Demo Hesaba Geç ve İşlem Yap
+                </button>
+              </div>
+            ) : (
+              <button
+                className={`emir-gonder-btn ${yon === 'AL' ? 'alis' : 'satis'}`}
+                style={{ marginTop: 14 }}
+                onClick={emirGonder}
+                disabled={bekle}
+              >
+                {bekle ? 'BIST Emri İletiliyor…' : `BIST ${hisse} ${yon} EMRİ GÖNDER`}
+              </button>
+            )}
 
             {mesaj && (
               <div className={mesaj.tur === 'ok' ? 'ok-msg' : 'error-msg'} style={{ fontSize: 12, marginTop: 8 }}>

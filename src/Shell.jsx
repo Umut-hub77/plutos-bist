@@ -8,6 +8,7 @@ import Sidebar from './components/Sidebar.jsx';
 import { AyarProvider, useAyar } from './ayarlar.jsx';
 import TutorialModal from './components/TutorialModal.jsx';
 import TradeAllHizliEmirModal from './components/TradeAllHizliEmirModal.jsx';
+import BankaBaglantiModal from './components/BankaBaglantiModal.jsx';
 
 const YASAL_UYARI =
   'Bu platformdaki içerik, algoritmik sinyal, puan ve projeksiyonlar yatırım danışmanlığı kapsamında değildir ' +
@@ -66,6 +67,9 @@ function ShellIc({ token, ad, soyad, onCikis }) {
   const [bildirimSayisi, setBildirimSayisi] = useState(0);
   const [bildirimAcik, setBildirimAcik] = useState(false);
   const [bakiye, setBakiye] = useState(null);
+  const [accountMode, setAccountMode] = useState('demo'); // 'demo' | 'real'
+  const [bagliBanka, setBagliBanka] = useState('');
+  const [bankaModalAcik, setBankaModalAcik] = useState(false);
 
   // TradeAll & TradingView Workstation Durumu
   const [saat, setSaat] = useState(() => new Date().toLocaleTimeString('tr-TR'));
@@ -99,9 +103,23 @@ function ShellIc({ token, ad, soyad, onCikis }) {
       .then(r => setBildirimSayisi(r.alarms.filter(a => a.tetiklendi).length))
       .catch(() => {});
     api('/api/portfolio')
-      .then(p => setBakiye(p.virtual_cash))
+      .then(p => {
+        setBakiye(p.virtual_cash);
+        setAccountMode(p.account_mode || 'demo');
+        setBagliBanka(p.real_bank || '');
+      })
       .catch(() => {});
   }, [api]);
+
+  const hesapModuAyarla = async (yeniMod) => {
+    try {
+      await api('/api/account/switch-mode', { method: 'POST', govde: { mode: yeniMod } });
+      setAccountMode(yeniMod);
+      bildirimYenile();
+    } catch {
+      /* sessiz */
+    }
+  };
 
   useEffect(() => {
     bildirimYenile();
@@ -291,6 +309,68 @@ function ShellIc({ token, ad, soyad, onCikis }) {
           </div>
 
           <div className="header-sag">
+            {/* Hesap Modu Seçici (Demo vs Gerçek Banka) */}
+            <div className="hesap-modu-anahtar" style={{ display: 'flex', alignItems: 'center', background: '#0B0E14', borderRadius: 8, padding: 3, border: '1px solid #2A2E39' }}>
+              <button
+                type="button"
+                className={`hesap-mod-btn ${accountMode === 'demo' ? 'aktif-demo' : ''}`}
+                onClick={() => hesapModuAyarla('demo')}
+                title="100.000 ₺ Sanal BIST Demo İşlem Masası (Alım-Satım Aktif)"
+                style={{
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '5px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: accountMode === 'demo' ? '#089981' : 'transparent',
+                  color: accountMode === 'demo' ? '#FFFFFF' : '#787B86',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span>🎮</span>
+                <span className="btn-metin">Demo</span>
+              </button>
+
+              <button
+                type="button"
+                className={`hesap-mod-btn ${accountMode === 'real' ? 'aktif-real' : ''}`}
+                onClick={() => {
+                  if (bagliBanka) {
+                    hesapModuAyarla('real');
+                  } else {
+                    setBankaModalAcik(true);
+                  }
+                }}
+                title={bagliBanka ? `${bagliBanka} Portföyü (Salt Okunur)` : 'Açık Bankacılık ile Gerçek Portföy Bağla'}
+                style={{
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '5px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: accountMode === 'real' ? '#FF9800' : 'transparent',
+                  color: accountMode === 'real' ? '#FFFFFF' : '#787B86',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span>💼</span>
+                <span className="btn-metin">{bagliBanka ? bagliBanka : 'Banka Bağla'}</span>
+                {accountMode === 'real' && (
+                  <span style={{ fontSize: 9.5, background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 4 }}>
+                    Salt Okunur
+                  </span>
+                )}
+              </button>
+            </div>
+
             <div
               className="seans-durum-rozet"
               style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}
@@ -306,10 +386,22 @@ function ShellIc({ token, ad, soyad, onCikis }) {
             {bakiye != null && (
               <div
                 className="cockpit-bakiye-kutu"
-                onClick={() => setTradeAllModalAcik(true)}
-                title="Hesap Sanal Bakiyesi / Teminat — Hızlı Emir İçin Tıklayın"
+                onClick={() => {
+                  if (accountMode === 'real') {
+                    setBankaModalAcik(true);
+                  } else {
+                    setTradeAllModalAcik(true);
+                  }
+                }}
+                style={{
+                  borderColor: accountMode === 'real' ? 'rgba(255,152,0,0.4)' : undefined,
+                  background: accountMode === 'real' ? 'rgba(255,152,0,0.08)' : undefined,
+                }}
+                title={accountMode === 'real' ? `${bagliBanka} Yatırım Nakit Bakiyesi` : "Hesap Sanal Bakiyesi / Teminat — Hızlı Emir İçin Tıklayın"}
               >
-                <span className="bakiye-etiket">PORTFÖY:</span>
+                <span className="bakiye-etiket" style={{ color: accountMode === 'real' ? '#FF9800' : undefined }}>
+                  {accountMode === 'real' ? 'GERÇEK NAKİT:' : 'PORTFÖY:'}
+                </span>
                 <span className="bakiye-deger">{Number(bakiye).toLocaleString('tr-TR')} ₺</span>
               </div>
             )}
@@ -434,6 +526,17 @@ function ShellIc({ token, ad, soyad, onCikis }) {
         kapat={() => setTradeAllModalAcik(false)}
         api={api}
         bildirimYenile={bildirimYenile}
+      />
+
+      {/* Açık Bankacılık Kurumsal Entegrasyon Modalı */}
+      <BankaBaglantiModal
+        acik={bankaModalAcik}
+        kapat={() => setBankaModalAcik(false)}
+        api={api}
+        bagliBanka={bagliBanka}
+        onBaglandi={() => {
+          bildirimYenile();
+        }}
       />
     </div>
   );

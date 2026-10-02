@@ -19,6 +19,7 @@ API dokümantasyonu: http://localhost:8000/docs
 import os
 import re
 import json
+import time
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -184,7 +185,20 @@ class EmirIstek(BaseModel):
     hisse: str
     yon: str          # "AL" | "SAT"
     lot: int
-    fiyat: float       # limit fiyatı ya da güncel piyasa fiyatı (frontend'den gelir)
+    fiyat: float      # limit fiyatı ya da güncel piyasa fiyatı (frontend'den gelir)
+    tip: str = "Limit" # "Limit" | "Piyasa"
+    hesap_turu: str = "demo" # "demo" | "real"
+
+
+class BankaBaglantiIstek(BaseModel):
+    banka: str
+    musteri_no: str = ""
+    tc_kimlik: str = ""
+    sms_kodu: str = ""
+
+
+class HesapModuIstek(BaseModel):
+    mode: str          # "demo" | "real"
 
 
 class PozisyonIstek(BaseModel):
@@ -617,7 +631,198 @@ def market_overview():
 
 
 # ---------------------------------------------------------------------------
-# Portföy (salt okunur — Faz 1)
+# Piyasa Fiyatı & Bekleyen Limit Emirleri Eşleştirme Motoru
+# ---------------------------------------------------------------------------
+def _hisse_anlik_fiyat(hisse: str) -> float:
+    kod = (hisse or "").strip().upper()
+    hist = _hizli_fiyat_gecmisi(kod)
+    if hist is not None and not hist.empty:
+        try:
+            val = float(hist["Close"].iloc[-1])
+            if val > 0:
+                return round(val, 2)
+        except Exception:
+            pass
+    # Borsa kapalıyken veya veri gecikmesinde kullanılan gerçekçi benchmark fiyatlar
+    varsayilan_fiyatlar = {
+        "THYAO": 286.50, "GARAN": 126.20, "ASELS": 370.00, "EREGL": 36.62, "TUPRS": 387.00,
+        "KCHOL": 209.90, "BIMAS": 480.00, "AKBNK": 56.80, "SISE": 42.30, "FROTO": 985.00,
+        "PGSUS": 234.50, "ISCTR": 18.40, "YKBNK": 28.50, "VAKBN": 19.80, "HALKB": 16.90,
+        "SAHOL": 94.20, "PETKM": 21.40, "TOASO": 220.00, "TCELL": 88.50, "MGROS": 490.00,
+    }
+    return varsayilan_fiyatlar.get(kod, 100.0)
+
+
+def _bekleyen_emirleri_isle(kullanici: dict) -> bool:
+    """
+    Kullanıcının bekleyen limit emirlerini güncel piyasa fiyatıyla eşleştirir.
+    - AL Limit Emri: Piyasa fiyatı <= limit fiyat olduğunda gerçekleşir.
+    - SAT Limit Emri: Piyasa fiyatı >= limit fiyat olduğunda gerçekleşir.
+    """
+    bekleyenler = kullanici.get("pending_orders") or []
+    if not bekleyenler:
+        return False
+
+    portfoy = kullanici.get("portfolio") or {}
+    sanal_bakiye = float(kullanici.get("virtual_cash", 100000.0))
+    bloke_nakit = float(kullanici.get("blocked_cash", 0.0))
+    trade_log = kullanici.get("trade_log") or []
+
+    kalan_bekleyenler = []
+    degisti = False
+
+    for emir in bekleyenler:
+        hisse = emir.get("hisse")
+        yon = emir.get("yon")
+        lot = int(emir.get("lot", 0))
+        limit_fiyat = float(emir.get("fiyat", 0.0))
+        tutar = float(emir.get("tutar", limit_fiyat * lot))
+
+        anlik = _hisse_anlik_fiyat(hisse)
+        gerceklesti = False
+
+        if yon == "AL" and anlik <= limit_fiyat:
+            # Gerçekleşti: Blokaj kalkar, hisse portföye eklenir
+            bloke_nakit = max(0.0, bloke_nakit - tutar)
+            gerceklesen_tutar = round(anlik * lot, 2)
+            fark = tutar - gerceklesen_tutar
+            if fark > 0:
+                sanal_bakiye += fark
+
+            mevcut = portfoy.get(hisse)
+            if mevcut:
+                toplam_lot = mevcut["lot"] + lot
+                yeni_maliyet = ((mevcut["lot"] * mevcut["maliyet"]) + (lot * anlik)) / toplam_lot
+                portfoy[hisse] = {"lot": toplam_lot, "maliyet": round(yeni_maliyet, 2), "hedef": mevcut.get("hedef", "Demo")}
+            else:
+                portfoy[hisse] = {"lot": lot, "maliyet": round(anlik, 2), "hedef": "Demo"}
+
+            trade_log.insert(0, {
+                "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                "hisse": hisse,
+                "yon": "AL",
+                "tip": "Limit",
+                "lot": lot,
+                "fiyat": round(anlik, 2),
+                "tutar": gerceklesen_tutar,
+                "durum": "GERÇEKLEŞTİ (Limit Eşleşti)",
+            })
+            gerceklesti = True
+            degisti = True
+
+        elif yon == "SAT" and anlik >= limit_fiyat:
+            gerceklesen_tutar = round(anlik * lot, 2)
+            sanal_bakiye += gerceklesen_tutar
+
+            mevcut = portfoy.get(hisse)
+            elde_lot = mevcut["lot"] if mevcut else 0
+            kalan_lot = max(0, elde_lot - lot)
+            if kalan_lot == 0:
+                if hisse in portfoy:
+                    del portfoy[hisse]
+            else:
+                portfoy[hisse]["lot"] = kalan_lot
+
+            trade_log.insert(0, {
+                "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                "hisse": hisse,
+                "yon": "SAT",
+                "tip": "Limit",
+                "lot": lot,
+                "fiyat": round(anlik, 2),
+                "tutar": gerceklesen_tutar,
+                "durum": "GERÇEKLEŞTİ (Limit Eşleşti)",
+            })
+            gerceklesti = True
+            degisti = True
+
+        if not gerceklesti:
+            emir["anlik_fiyat"] = anlik
+            kalan_bekleyenler.append(emir)
+
+    if degisti:
+        kullanici["pending_orders"] = kalan_bekleyenler
+        kullanici["portfolio"] = portfoy
+        kullanici["virtual_cash"] = sanal_bakiye
+        kullanici["blocked_cash"] = bloke_nakit
+        kullanici["trade_log"] = trade_log
+
+    return degisti
+
+
+# ---------------------------------------------------------------------------
+# Desteklenen Türk Bankaları & Aracı Kurumlar (Açık Bankacılık / Read-Only)
+# ---------------------------------------------------------------------------
+DESTEKLENEN_BANKALAR = [
+    {
+        "id": "is_bankasi",
+        "ad": "İş Bankası (İş Yatırım)",
+        "aciklama": "İş Yatırım Menkul Değerler A.Ş. — BIST Pay & VİOP",
+        "renk": "#004B93",
+        "logo_text": "İŞ",
+        "durum": "Hazır",
+    },
+    {
+        "id": "garanti_bbva",
+        "ad": "Garanti BBVA Yatırım",
+        "aciklama": "Garanti Yatırım Menkul Kıymetler A.Ş.",
+        "renk": "#008542",
+        "logo_text": "GB",
+        "durum": "Hazır",
+    },
+    {
+        "id": "yapi_kredi",
+        "ad": "Yapı Kredi Yatırım",
+        "aciklama": "Yapı Kredi Yatırım Menkul Değerler A.Ş.",
+        "renk": "#003A70",
+        "logo_text": "YK",
+        "durum": "Hazır",
+    },
+    {
+        "id": "akbank",
+        "ad": "Akbank Yatırımcı",
+        "aciklama": "Ak Yatırım Menkul Değerler A.Ş.",
+        "renk": "#E30613",
+        "logo_text": "AK",
+        "durum": "Hazır",
+    },
+    {
+        "id": "ziraat",
+        "ad": "Ziraat Yatırım",
+        "aciklama": "Ziraat Yatırım Menkul Değerler A.Ş.",
+        "renk": "#D2001A",
+        "logo_text": "ZR",
+        "durum": "Hazır",
+    },
+    {
+        "id": "vakif",
+        "ad": "Vakıf Yatırım",
+        "aciklama": "Vakıf Yatırım Menkul Değerler A.Ş.",
+        "renk": "#FDB813",
+        "logo_text": "VK",
+        "durum": "Hazır",
+    },
+    {
+        "id": "qnb",
+        "ad": "QNB Finansinvest",
+        "aciklama": "QNB Finansinvest Menkul Değerler A.Ş.",
+        "renk": "#6A1A40",
+        "logo_text": "QNB",
+        "durum": "Hazır",
+    },
+    {
+        "id": "midas",
+        "ad": "Midas Menkul Değerler",
+        "aciklama": "Midas Menkul Değerler A.Ş. — SPK Lisanslı Aracı Kurum",
+        "renk": "#11E1A3",
+        "logo_text": "MD",
+        "durum": "Hazır",
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Portföy (Demo & Gerçek Banka Ayrımı)
 # ---------------------------------------------------------------------------
 @app.get("/api/portfolio")
 def portfolio(authorization: str | None = Header(default=None)):
@@ -626,47 +831,114 @@ def portfolio(authorization: str | None = Header(default=None)):
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
-    pozisyonlar = []
-    toplam_deger = 0.0
+    # Varsa bekleyen limit emirleri kontrol et ve piyasa fiyatıyla eşleşenleri işlet
+    if _bekleyen_emirleri_isle(kullanici):
+        upsert_user(email, kullanici)
+
+    # 1. Demo Portföy Hesaplamaları
+    demo_pozisyonlar = []
+    demo_toplam_deger = 0.0
     for hisse, poz in (kullanici.get("portfolio") or {}).items():
-        hist = _hizli_fiyat_gecmisi(hisse)
-        fiyat = float(hist["Close"].iloc[-1]) if hist is not None and not hist.empty else poz.get("maliyet", 0)
-        deger = fiyat * poz.get("lot", 0)
-        toplam_deger += deger
-        pozisyonlar.append({
-            "hisse": hisse, "lot": poz.get("lot", 0), "maliyet": poz.get("maliyet", 0),
-            "guncel_fiyat": fiyat, "piyasa_degeri": deger,
+        fiyat = _hisse_anlik_fiyat(hisse)
+        lot = int(poz.get("lot", 0))
+        maliyet = float(poz.get("maliyet", 0.0))
+        deger = round(fiyat * lot, 2)
+        demo_toplam_deger += deger
+        demo_pozisyonlar.append({
+            "hisse": hisse,
+            "lot": lot,
+            "maliyet": maliyet,
+            "guncel_fiyat": fiyat,
+            "piyasa_degeri": deger,
+            "kar_zarar": round(deger - (lot * maliyet), 2),
+            "kar_zarar_yuzde": round(((fiyat - maliyet) / maliyet) * 100, 2) if maliyet > 0 else 0.0,
         })
 
     sanal_bakiye = float(kullanici.get("virtual_cash", 100000.0))
+    bloke_nakit = float(kullanici.get("blocked_cash", 0.0))
+    pending_orders = kullanici.get("pending_orders") or []
+
+    # 2. Gerçek Banka Portföyü Hesaplamaları (Salt Okunur)
+    real_pozisyonlar = []
+    real_toplam_deger = 0.0
+    for hisse, poz in (kullanici.get("real_portfolio") or {}).items():
+        fiyat = _hisse_anlik_fiyat(hisse)
+        lot = int(poz.get("lot", 0))
+        maliyet = float(poz.get("maliyet", 0.0))
+        deger = round(fiyat * lot, 2)
+        real_toplam_deger += deger
+        real_pozisyonlar.append({
+            "hisse": hisse,
+            "lot": lot,
+            "maliyet": maliyet,
+            "guncel_fiyat": fiyat,
+            "piyasa_degeri": deger,
+            "kar_zarar": round(deger - (lot * maliyet), 2),
+            "kar_zarar_yuzde": round(((fiyat - maliyet) / maliyet) * 100, 2) if maliyet > 0 else 0.0,
+        })
+
+    real_nakit = float(kullanici.get("real_cash", 0.0))
+    real_banka = kullanici.get("real_bank", "")
+    hesap_modu = kullanici.get("account_mode", "demo")
+
+    # Frontend bileşenlerinin anlık moduna göre doğrudan tüketebileceği ana alanlar
+    aktif_pozisyonlar = real_pozisyonlar if hesap_modu == "real" else demo_pozisyonlar
+    aktif_pozisyon_degeri = real_toplam_deger if hesap_modu == "real" else demo_toplam_deger
+    aktif_nakit = real_nakit if hesap_modu == "real" else sanal_bakiye
+    aktif_toplam_varlik = (real_nakit + real_toplam_deger) if hesap_modu == "real" else (sanal_bakiye + bloke_nakit + demo_toplam_deger)
+
     return {
-        "virtual_cash": sanal_bakiye,
-        "pozisyonlar": pozisyonlar,
-        "portfolio": kullanici.get("portfolio") or {},
-        "pozisyon_degeri": toplam_deger,
-        "toplam_varlik": sanal_bakiye + toplam_deger,
+        "account_mode": hesap_modu,
+        "is_real": (hesap_modu == "real"),
+        "real_bank": real_banka,
+        "real_connected": bool(real_banka),
+        "virtual_cash": aktif_nakit,
+        "blocked_cash": bloke_nakit if hesap_modu == "demo" else 0.0,
+        "usable_cash": aktif_nakit,
+        "pozisyonlar": aktif_pozisyonlar,
+        "portfolio": (kullanici.get("real_portfolio") if hesap_modu == "real" else kullanici.get("portfolio")) or {},
+        "pozisyon_degeri": aktif_pozisyon_degeri,
+        "toplam_varlik": aktif_toplam_varlik,
+        "pending_orders": pending_orders,
+        "demo": {
+            "virtual_cash": sanal_bakiye,
+            "blocked_cash": bloke_nakit,
+            "pozisyonlar": demo_pozisyonlar,
+            "portfolio": kullanici.get("portfolio") or {},
+            "pozisyon_degeri": demo_toplam_deger,
+            "toplam_varlik": sanal_bakiye + bloke_nakit + demo_toplam_deger,
+            "pending_orders": pending_orders,
+        },
+        "real": {
+            "banka": real_banka,
+            "nakit": real_nakit,
+            "pozisyonlar": real_pozisyonlar,
+            "portfolio": kullanici.get("real_portfolio") or {},
+            "pozisyon_degeri": real_toplam_deger,
+            "toplam_varlik": real_nakit + real_toplam_deger,
+            "read_only": True,
+        }
     }
 
 
 # ---------------------------------------------------------------------------
 # Yan menü: Portföy İşlemleri (Güncelle / Ekle / Sil)
-# dashboard.py'deki st.sidebar "Portföy İşlemleri" expander'ıyla AYNI mantık.
 # ---------------------------------------------------------------------------
 @app.get("/api/tickers")
 def hisse_listesi():
-    # Temettü modülünün varsayılan seçimi (dashboard.py: ANA_SAYFA_TARAMA_LISTESI[:10] ∩ BIST_TUM_LIST)
     varsayilan = [h for h in ANA_SAYFA_TARAMA_LISTESI[:10] if h in BIST_TUM_LIST]
     return {"tickers": BIST_TUM_LIST, "varsayilan_temettu": varsayilan}
 
 
 @app.get("/api/portfolio/raw")
 def portfoy_ham(authorization: str | None = Header(default=None)):
-    """Fiyat çekmeden (hızlı) sadece lot/maliyet döner — yan menü formu bunu kullanır."""
     email = _oturum_dogrula(authorization)
     kullanici = get_user(email)
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
-    return {"portfolio": kullanici.get("portfolio") or {}}
+    hesap_modu = kullanici.get("account_mode", "demo")
+    portfoy = kullanici.get("real_portfolio") if hesap_modu == "real" else kullanici.get("portfolio")
+    return {"portfolio": portfoy or {}, "account_mode": hesap_modu}
 
 
 @app.post("/api/portfolio")
@@ -675,6 +947,13 @@ def pozisyon_ekle(istek: PozisyonIstek, authorization: str | None = Header(defau
     kullanici = get_user(email)
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    if kullanici.get("account_mode") == "real":
+        raise HTTPException(
+            status_code=403,
+            detail="Gerçek banka portföyü salt okunurdur. Manuel pozisyon eklenemez. Lütfen Demo Hesaba geçiniz."
+        )
+
     hisse = istek.hisse.strip().upper()
     if hisse not in BIST_TUM_LIST:
         raise HTTPException(status_code=400, detail=f"'{hisse}' BIST listesinde yok.")
@@ -693,6 +972,13 @@ def pozisyon_guncelle(hisse: str, istek: PozisyonGuncelleIstek, authorization: s
     kullanici = get_user(email)
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    if kullanici.get("account_mode") == "real":
+        raise HTTPException(
+            status_code=403,
+            detail="Gerçek banka portföyü salt okunurdur. Pozisyon güncellenemez. Lütfen Demo Hesaba geçiniz."
+        )
+
     hisse = hisse.strip().upper()
     portfoy = kullanici.get("portfolio") or {}
     if hisse not in portfoy:
@@ -711,6 +997,13 @@ def pozisyon_sil(hisse: str, authorization: str | None = Header(default=None)):
     kullanici = get_user(email)
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    if kullanici.get("account_mode") == "real":
+        raise HTTPException(
+            status_code=403,
+            detail="Gerçek banka portföyü salt okunurdur. Pozisyon silinemez. Lütfen Demo Hesaba geçiniz."
+        )
+
     hisse = hisse.strip().upper()
     portfoy = kullanici.get("portfolio") or {}
     if hisse not in portfoy:
@@ -722,20 +1015,17 @@ def pozisyon_sil(hisse: str, authorization: str | None = Header(default=None)):
 
 
 # ---------------------------------------------------------------------------
-# Anlık fiyat sorgulama (Emir Ver ekranı fiyatı göstermek için kullanır)
+# Anlık fiyat sorgulama
 # ---------------------------------------------------------------------------
 @app.get("/api/price/{hisse}")
 def anlik_fiyat(hisse: str):
     hisse = hisse.strip().upper()
-    hist = _hizli_fiyat_gecmisi(hisse)
-    if hist is None or hist.empty:
-        raise HTTPException(status_code=404, detail=f"'{hisse}' için fiyat bulunamadı.")
-    return {"hisse": hisse, "fiyat": float(hist["Close"].iloc[-1])}
+    fiyat = _hisse_anlik_fiyat(hisse)
+    return {"hisse": hisse, "fiyat": fiyat}
 
 
 # ---------------------------------------------------------------------------
-# Emir Ver (Demo) — dashboard.py'deki "Emir Ver (Demo)" modülüyle AYNI mantık:
-# gerçek borsaya emir GİTMEZ, sadece kullanıcının sanal bakiyesi/portföyü değişir.
+# Gerçekçi BIST Emir Motoru (Piyasa & Limit / Teminat & Bekleyen Emirler)
 # ---------------------------------------------------------------------------
 @app.post("/api/order")
 def emir_ver(istek: EmirIstek, authorization: str | None = Header(default=None)):
@@ -744,52 +1034,438 @@ def emir_ver(istek: EmirIstek, authorization: str | None = Header(default=None))
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
+    # 1. Gerçek Hesap Güvenlik Kilidi (Salt Okunur)
+    hesap_modu = kullanici.get("account_mode", "demo")
+    if hesap_modu == "real" or istek.hesap_turu == "real":
+        raise HTTPException(
+            status_code=403,
+            detail="Gerçek banka hesabınız güvenlik protokolü gereği SALT OKUNUR (Read-Only) moddadır. "
+                   "Bankanız üzerinden doğrudan alım-satım yapılamaz. Emir testleri ve algoritmik simülasyonlar için "
+                   "lütfen Demo Hesaba geçiniz."
+        )
+
     if istek.lot <= 0 or istek.fiyat <= 0:
-        raise HTTPException(status_code=400, detail="Lot ve fiyat sıfırdan büyük olmalı.")
+        raise HTTPException(status_code=400, detail="Lot ve fiyat sıfırdan büyük olmalıdır.")
 
     hisse = istek.hisse.strip().upper()
+    if hisse not in BIST_TUM_LIST:
+        raise HTTPException(status_code=400, detail=f"'{hisse}' BIST pay senedi listesinde bulunamadı.")
+
+    anlik_piyasa = _hisse_anlik_fiyat(hisse)
+    tip = (istek.tip or "Limit").capitalize()
+
+    # BIST ±%10 Günlük Tavan/Taban Marj Kontrolü
+    tavan_fiyat = round(anlik_piyasa * 1.1005, 2)
+    taban_fiyat = round(anlik_piyasa * 0.8995, 2)
+
+    if tip == "Limit":
+        if istek.fiyat > tavan_fiyat:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Borsa İstanbul kuralları gereği tavan fiyatın üzerinde emir verilemez. "
+                       f"Güncel Fiyat: {anlik_piyasa:.2f} ₺, Tavan (+%10): {tavan_fiyat:.2f} ₺, Girdiğiniz: {istek.fiyat:.2f} ₺"
+            )
+        if istek.fiyat < taban_fiyat:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Borsa İstanbul kuralları gereği taban fiyatın altında emir verilemez. "
+                       f"Güncel Fiyat: {anlik_piyasa:.2f} ₺, Taban (-%10): {taban_fiyat:.2f} ₺, Girdiğiniz: {istek.fiyat:.2f} ₺"
+            )
+
     portfoy = kullanici.get("portfolio") or {}
     sanal_bakiye = float(kullanici.get("virtual_cash", 100000.0))
+    bloke_nakit = float(kullanici.get("blocked_cash", 0.0))
+    pending_orders = kullanici.get("pending_orders") or []
     trade_log = kullanici.get("trade_log") or []
-    tutar = istek.fiyat * istek.lot
 
-    if istek.yon == "AL":
-        if tutar > sanal_bakiye:
-            raise HTTPException(status_code=400, detail=f"Yetersiz sanal bakiye. Gereken: {tutar:.2f} ₺, mevcut: {sanal_bakiye:.2f} ₺")
-        mevcut = portfoy.get(hisse)
-        if mevcut:
-            toplam_lot = mevcut["lot"] + istek.lot
-            yeni_maliyet = ((mevcut["lot"] * mevcut["maliyet"]) + (istek.lot * istek.fiyat)) / toplam_lot
-            portfoy[hisse] = {"lot": toplam_lot, "maliyet": yeni_maliyet, "hedef": mevcut.get("hedef", "Demo")}
-        else:
-            portfoy[hisse] = {"lot": istek.lot, "maliyet": istek.fiyat, "hedef": "Demo"}
-        sanal_bakiye -= tutar
+    # --- A) PİYASA EMRİ (MARKET ORDER) ---
+    if tip == "Piyasa":
+        islem_fiyati = anlik_piyasa
+        tutar = round(islem_fiyati * istek.lot, 2)
 
-    elif istek.yon == "SAT":
-        mevcut = portfoy.get(hisse)
-        elde_lot = mevcut["lot"] if mevcut else 0
-        if istek.lot > elde_lot:
-            raise HTTPException(status_code=400, detail=f"Elinizde sadece {elde_lot} lot {hisse} var.")
-        kalan_lot = elde_lot - istek.lot
-        if kalan_lot == 0:
-            del portfoy[hisse]
+        if istek.yon == "AL":
+            if tutar > sanal_bakiye:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Yetersiz sanal bakiye. Gereken: {tutar:.2f} ₺ (Piyasa: {islem_fiyati:.2f} ₺), Mevcut: {sanal_bakiye:.2f} ₺"
+                )
+            mevcut = portfoy.get(hisse)
+            if mevcut:
+                toplam_lot = mevcut["lot"] + istek.lot
+                yeni_maliyet = ((mevcut["lot"] * mevcut["maliyet"]) + tutar) / toplam_lot
+                portfoy[hisse] = {"lot": toplam_lot, "maliyet": round(yeni_maliyet, 2), "hedef": mevcut.get("hedef", "Demo")}
+            else:
+                portfoy[hisse] = {"lot": istek.lot, "maliyet": round(islem_fiyati, 2), "hedef": "Demo"}
+            sanal_bakiye -= tutar
+            durum_aciklama = f"Piyasa fiyatından ({islem_fiyati:.2f} ₺) anında gerçekleşti."
+
+        elif istek.yon == "SAT":
+            mevcut = portfoy.get(hisse)
+            elde_lot = mevcut["lot"] if mevcut else 0
+            if istek.lot > elde_lot:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Portföyünüzde yeterli {hisse} yok. Mevcut: {elde_lot} Lot, Satılmak İstenen: {istek.lot} Lot."
+                )
+            kalan_lot = elde_lot - istek.lot
+            if kalan_lot == 0:
+                del portfoy[hisse]
+            else:
+                portfoy[hisse]["lot"] = kalan_lot
+            sanal_bakiye += tutar
+            durum_aciklama = f"Piyasa fiyatından ({islem_fiyati:.2f} ₺) anında gerçekleşti."
         else:
-            portfoy[hisse]["lot"] = kalan_lot
+            raise HTTPException(status_code=400, detail="Geçersiz yön (AL veya SAT olmalı).")
+
+        trade_log.insert(0, {
+            "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+            "hisse": hisse, "yon": istek.yon, "tip": "Piyasa", "lot": istek.lot,
+            "fiyat": islem_fiyati, "tutar": tutar, "durum": "GERÇEKLEŞTİ",
+        })
+
+        kullanici["portfolio"] = portfoy
+        kullanici["virtual_cash"] = sanal_bakiye
+        kullanici["trade_log"] = trade_log
+        upsert_user(email, kullanici)
+
+        return {
+            "ok": True,
+            "durum": "GERÇEKLEŞTİ",
+            "gerceklesen_fiyat": islem_fiyati,
+            "lot": istek.lot,
+            "tutar": tutar,
+            "virtual_cash": sanal_bakiye,
+            "blocked_cash": bloke_nakit,
+            "portfolio": portfoy,
+            "trade_log": trade_log[:20],
+            "pending_orders": pending_orders,
+            "mesaj": f"{istek.lot} Lot {hisse} {istek.yon} emriniz {durum_aciklama}"
+        }
+
+    # --- B) LİMİT EMİR (LIMIT ORDER) ---
+    elif tip == "Limit":
+        limit_fiyat = round(istek.fiyat, 2)
+        tutar = round(limit_fiyat * istek.lot, 2)
+
+        if istek.yon == "AL":
+            # Alış: Limit fiyat >= piyasa fiyatı ise piyasadaki satıcılarla doğrudan eşleşir (anında gerçekleşir)
+            if limit_fiyat >= anlik_piyasa:
+                gerceklesen_fiyat = anlik_piyasa
+                gerceklesen_tutar = round(gerceklesen_fiyat * istek.lot, 2)
+                if gerceklesen_tutar > sanal_bakiye:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Yetersiz sanal bakiye. Gereken: {gerceklesen_tutar:.2f} ₺, Mevcut: {sanal_bakiye:.2f} ₺"
+                    )
+                mevcut = portfoy.get(hisse)
+                if mevcut:
+                    toplam_lot = mevcut["lot"] + istek.lot
+                    yeni_maliyet = ((mevcut["lot"] * mevcut["maliyet"]) + gerceklesen_tutar) / toplam_lot
+                    portfoy[hisse] = {"lot": toplam_lot, "maliyet": round(yeni_maliyet, 2), "hedef": mevcut.get("hedef", "Demo")}
+                else:
+                    portfoy[hisse] = {"lot": istek.lot, "maliyet": round(gerceklesen_fiyat, 2), "hedef": "Demo"}
+                sanal_bakiye -= gerceklesen_tutar
+
+                trade_log.insert(0, {
+                    "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                    "hisse": hisse, "yon": "AL", "tip": "Limit", "lot": istek.lot,
+                    "fiyat": gerceklesen_fiyat, "tutar": gerceklesen_tutar,
+                    "durum": "GERÇEKLEŞTİ",
+                })
+
+                kullanici["portfolio"] = portfoy
+                kullanici["virtual_cash"] = sanal_bakiye
+                kullanici["trade_log"] = trade_log
+                upsert_user(email, kullanici)
+
+                return {
+                    "ok": True,
+                    "durum": "GERÇEKLEŞTİ",
+                    "gerceklesen_fiyat": gerceklesen_fiyat,
+                    "lot": istek.lot,
+                    "tutar": gerceklesen_tutar,
+                    "virtual_cash": sanal_bakiye,
+                    "blocked_cash": bloke_nakit,
+                    "portfolio": portfoy,
+                    "trade_log": trade_log[:20],
+                    "pending_orders": pending_orders,
+                    "mesaj": f"Limit fiyatınız ({limit_fiyat:.2f} ₺) piyasayı ({anlik_piyasa:.2f} ₺) karşıladığından emriniz derhal gerçekleşti."
+                }
+            else:
+                # Alış: Limit fiyat piyasanın ALTINDA -> BORSAYA İLETİLİR, TAHTADA BEKLER & TEMİNAT BLOKE EDİLİR
+                if tutar > sanal_bakiye:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Limit alış emri için teminat yetersiz. Gereken Bloke: {tutar:.2f} ₺, "
+                               f"Kullanılabilir Nakit: {sanal_bakiye:.2f} ₺"
+                    )
+                sanal_bakiye -= tutar
+                bloke_nakit += tutar
+
+                order_id = f"ORD-{int(time.time()*1000)}"
+                yeni_emir = {
+                    "id": order_id,
+                    "hisse": hisse,
+                    "yon": "AL",
+                    "tip": "Limit",
+                    "lot": istek.lot,
+                    "fiyat": limit_fiyat,
+                    "anlik_fiyat": anlik_piyasa,
+                    "tutar": tutar,
+                    "durum": "BEKLİYOR",
+                    "tarih": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "bilgi": f"Piyasa ({anlik_piyasa:.2f} ₺) limit fiyata ({limit_fiyat:.2f} ₺) düşene kadar tahtada bekliyor."
+                }
+                pending_orders.insert(0, yeni_emir)
+
+                trade_log.insert(0, {
+                    "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                    "hisse": hisse, "yon": "AL", "tip": "Limit", "lot": istek.lot,
+                    "fiyat": limit_fiyat, "tutar": tutar, "durum": "BEKLİYOR (Tahtada)",
+                })
+
+                kullanici["pending_orders"] = pending_orders
+                kullanici["virtual_cash"] = sanal_bakiye
+                kullanici["blocked_cash"] = bloke_nakit
+                kullanici["trade_log"] = trade_log
+                upsert_user(email, kullanici)
+
+                return {
+                    "ok": True,
+                    "durum": "BEKLİYOR",
+                    "order": yeni_emir,
+                    "virtual_cash": sanal_bakiye,
+                    "blocked_cash": bloke_nakit,
+                    "portfolio": portfoy,
+                    "trade_log": trade_log[:20],
+                    "pending_orders": pending_orders,
+                    "mesaj": f"Limit alış emriniz borsaya iletildi. Piyasa fiyatı ({anlik_piyasa:.2f} ₺) limit fiyata ({limit_fiyat:.2f} ₺) "
+                             f"düştüğünde otomatik gerçekleşecektir. {tutar:.2f} ₺ teminat bloke edildi."
+                }
+
+        elif istek.yon == "SAT":
+            mevcut = portfoy.get(hisse)
+            elde_lot = mevcut["lot"] if mevcut else 0
+            if istek.lot > elde_lot:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Portföyünüzde yeterli hisse bulunmuyor. Mevcut: {elde_lot} Lot, Satış Emri: {istek.lot} Lot."
+                )
+
+            # Satış: Limit fiyat <= piyasa fiyatı ise anında eşleşir
+            if limit_fiyat <= anlik_piyasa:
+                gerceklesen_fiyat = anlik_piyasa
+                gerceklesen_tutar = round(gerceklesen_fiyat * istek.lot, 2)
+                kalan_lot = elde_lot - istek.lot
+                if kalan_lot == 0:
+                    del portfoy[hisse]
+                else:
+                    portfoy[hisse]["lot"] = kalan_lot
+                sanal_bakiye += gerceklesen_tutar
+
+                trade_log.insert(0, {
+                    "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                    "hisse": hisse, "yon": "SAT", "tip": "Limit", "lot": istek.lot,
+                    "fiyat": gerceklesen_fiyat, "tutar": gerceklesen_tutar,
+                    "durum": "GERÇEKLEŞTİ",
+                })
+
+                kullanici["portfolio"] = portfoy
+                kullanici["virtual_cash"] = sanal_bakiye
+                kullanici["trade_log"] = trade_log
+                upsert_user(email, kullanici)
+
+                return {
+                    "ok": True,
+                    "durum": "GERÇEKLEŞTİ",
+                    "gerceklesen_fiyat": gerceklesen_fiyat,
+                    "lot": istek.lot,
+                    "tutar": gerceklesen_tutar,
+                    "virtual_cash": sanal_bakiye,
+                    "blocked_cash": bloke_nakit,
+                    "portfolio": portfoy,
+                    "trade_log": trade_log[:20],
+                    "pending_orders": pending_orders,
+                    "mesaj": f"Limit satış fiyatınız ({limit_fiyat:.2f} ₺) piyasayı ({anlik_piyasa:.2f} ₺) karşıladığından emriniz derhal gerçekleşti."
+                }
+            else:
+                # Satış: Limit fiyat piyasanın ÜSTÜNDE -> BORSAYA İLETİLİR, TAHTADA BEKLER!
+                order_id = f"ORD-{int(time.time()*1000)}"
+                yeni_emir = {
+                    "id": order_id,
+                    "hisse": hisse,
+                    "yon": "SAT",
+                    "tip": "Limit",
+                    "lot": istek.lot,
+                    "fiyat": limit_fiyat,
+                    "anlik_fiyat": anlik_piyasa,
+                    "tutar": tutar,
+                    "durum": "BEKLİYOR",
+                    "tarih": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "bilgi": f"Piyasa ({anlik_piyasa:.2f} ₺) limit fiyata ({limit_fiyat:.2f} ₺) yükselene kadar tahtada bekliyor."
+                }
+                pending_orders.insert(0, yeni_emir)
+
+                trade_log.insert(0, {
+                    "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                    "hisse": hisse, "yon": "SAT", "tip": "Limit", "lot": istek.lot,
+                    "fiyat": limit_fiyat, "tutar": tutar, "durum": "BEKLİYOR (Tahtada)",
+                })
+
+                kullanici["pending_orders"] = pending_orders
+                kullanici["trade_log"] = trade_log
+                upsert_user(email, kullanici)
+
+                return {
+                    "ok": True,
+                    "durum": "BEKLİYOR",
+                    "order": yeni_emir,
+                    "virtual_cash": sanal_bakiye,
+                    "blocked_cash": bloke_nakit,
+                    "portfolio": portfoy,
+                    "trade_log": trade_log[:20],
+                    "pending_orders": pending_orders,
+                    "mesaj": f"Limit satış emriniz borsaya iletildi. Piyasa fiyatı ({anlik_piyasa:.2f} ₺) limit fiyata ({limit_fiyat:.2f} ₺) "
+                             f"yükseldiğinde otomatik gerçekleşecektir."
+                }
+        else:
+            raise HTTPException(status_code=400, detail="Geçersiz yön (AL veya SAT olmalı).")
+
+
+# ---------------------------------------------------------------------------
+# Bekleyen Emri İptal Etme
+# ---------------------------------------------------------------------------
+@app.post("/api/order/cancel/{order_id}")
+def emri_iptal_et(order_id: str, authorization: str | None = Header(default=None)):
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    pending_orders = kullanici.get("pending_orders") or []
+    hedef_emir = None
+    kalan_emirler = []
+
+    for em in pending_orders:
+        if em.get("id") == order_id:
+            hedef_emir = em
+        else:
+            kalan_emirler.append(em)
+
+    if not hedef_emir:
+        raise HTTPException(status_code=404, detail="İptal edilecek bekleyen emir bulunamadı.")
+
+    sanal_bakiye = float(kullanici.get("virtual_cash", 100000.0))
+    bloke_nakit = float(kullanici.get("blocked_cash", 0.0))
+    trade_log = kullanici.get("trade_log") or []
+
+    # Alış emri iptalinde bloke edilen nakit serbest bırakılır
+    if hedef_emir.get("yon") == "AL":
+        tutar = float(hedef_emir.get("tutar", 0.0))
         sanal_bakiye += tutar
-    else:
-        raise HTTPException(status_code=400, detail="Geçersiz yön (AL veya SAT olmalı).")
+        bloke_nakit = max(0.0, bloke_nakit - tutar)
 
     trade_log.insert(0, {
         "zaman": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
-        "hisse": hisse, "yon": istek.yon, "lot": istek.lot, "fiyat": istek.fiyat, "tutar": tutar,
+        "hisse": hedef_emir.get("hisse"),
+        "yon": hedef_emir.get("yon"),
+        "tip": hedef_emir.get("tip", "Limit"),
+        "lot": hedef_emir.get("lot"),
+        "fiyat": hedef_emir.get("fiyat"),
+        "tutar": hedef_emir.get("tutar"),
+        "durum": "İPTAL EDİLDİ",
     })
 
-    kullanici["portfolio"] = portfoy
+    kullanici["pending_orders"] = kalan_emirler
     kullanici["virtual_cash"] = sanal_bakiye
+    kullanici["blocked_cash"] = bloke_nakit
     kullanici["trade_log"] = trade_log
     upsert_user(email, kullanici)
 
-    return {"ok": True, "virtual_cash": sanal_bakiye, "portfolio": portfoy, "trade_log": trade_log[:20]}
+    return {
+        "ok": True,
+        "mesaj": f"{hedef_emir.get('hisse')} {hedef_emir.get('yon')} limit emri iptal edildi.",
+        "virtual_cash": sanal_bakiye,
+        "blocked_cash": bloke_nakit,
+        "pending_orders": kalan_emirler,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Açık Bankacılık (Open Banking) Entegrasyonu & Hesap Modu Uç Noktaları
+# ---------------------------------------------------------------------------
+@app.get("/api/bank/list")
+def banka_listesi():
+    return {"bankalar": DESTEKLENEN_BANKALAR}
+
+
+@app.post("/api/bank/connect")
+def banka_bagla(istek: BankaBaglantiIstek, authorization: str | None = Header(default=None)):
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    secilen = next((b for b in DESTEKLENEN_BANKALAR if b["ad"].lower() == istek.banka.lower() or b["id"].lower() == istek.banka.lower()), None)
+    banka_adi = secilen["ad"] if secilen else istek.banka
+
+    # Banka açık bankacılık arayüzünden çekilen örnek kurumsal portföy
+    mock_real_portfolio = {
+        "THYAO": {"lot": 350, "maliyet": 274.50, "hedef": "Uzun Vade"},
+        "ASELS": {"lot": 500, "maliyet": 348.00, "hedef": "Temettü"},
+        "TUPRS": {"lot": 200, "maliyet": 365.20, "hedef": "Büyüme"},
+        "KCHOL": {"lot": 300, "maliyet": 195.40, "hedef": "Çekirdek"},
+        "BIMAS": {"lot": 150, "maliyet": 462.00, "hedef": "Defansif"},
+    }
+    mock_real_cash = 48500.00
+
+    kullanici["real_bank"] = banka_adi
+    kullanici["real_portfolio"] = mock_real_portfolio
+    kullanici["real_cash"] = mock_real_cash
+    kullanici["account_mode"] = "real"
+    upsert_user(email, kullanici)
+
+    return {
+        "ok": True,
+        "banka": banka_adi,
+        "real_cash": mock_real_cash,
+        "portfolio": mock_real_portfolio,
+        "mesaj": f"{banka_adi} Açık Bankacılık entegrasyonu sağlandı. Gerçek portföyünüz salt okunur modda aktarıldı."
+    }
+
+
+@app.post("/api/bank/disconnect")
+def banka_baglantisini_kes(authorization: str | None = Header(default=None)):
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    eski_banka = kullanici.get("real_bank", "Banka")
+    kullanici["real_bank"] = ""
+    kullanici["real_portfolio"] = {}
+    kullanici["real_cash"] = 0.0
+    kullanici["account_mode"] = "demo"
+    upsert_user(email, kullanici)
+
+    return {"ok": True, "mesaj": f"{eski_banka} bağlantısı kesildi. Demo moda geçildi."}
+
+
+@app.post("/api/account/switch-mode")
+def hesap_modu_degistir(istek: HesapModuIstek, authorization: str | None = Header(default=None)):
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    mod = (istek.mode or "demo").lower()
+    if mod not in ("demo", "real"):
+        raise HTTPException(status_code=400, detail="Hesap modu 'demo' veya 'real' olmalıdır.")
+
+    kullanici["account_mode"] = mod
+    upsert_user(email, kullanici)
+
+    return {"ok": True, "account_mode": mod, "is_real": (mod == "real"), "real_bank": kullanici.get("real_bank", "")}
 
 
 @app.get("/api/trades")

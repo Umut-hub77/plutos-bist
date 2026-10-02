@@ -63,6 +63,12 @@ class User(Base):
     trade_log = Column(JSON, nullable=False, default=list)             # Plutos demo işlem geçmişi
     price_alarms = Column(JSON, nullable=False, default=list)          # Plutos fiyat alarmları
     onboarding_gorundu = Column(String, nullable=False, default="")    # "1" ise ilk kullanım rehberi bir daha gösterilmez
+    pending_orders = Column(JSON, nullable=False, default=list)        # Bekleyen limit emirler
+    blocked_cash = Column(String, nullable=False, default="0.0")       # Bloke teminat
+    real_portfolio = Column(JSON, nullable=False, default=dict)        # Gerçek banka portföyü
+    real_bank = Column(String, nullable=False, default="")             # Bağlı banka adı
+    real_cash = Column(String, nullable=False, default="0.0")          # Bankadaki yatırım nakdi
+    account_mode = Column(String, nullable=False, default="demo")      # "demo" | "real"
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                          onupdate=lambda: datetime.now(timezone.utc))
@@ -81,6 +87,12 @@ def _migrate_add_missing_columns():
             "ALTER TABLE users ADD COLUMN price_alarms JSON DEFAULT '[]'",
             "ALTER TABLE users ADD COLUMN onboarding_gorundu VARCHAR DEFAULT ''",
             "ALTER TABLE users ADD COLUMN email_verified VARCHAR DEFAULT '1'",
+            "ALTER TABLE users ADD COLUMN pending_orders JSON DEFAULT '[]'",
+            "ALTER TABLE users ADD COLUMN blocked_cash VARCHAR DEFAULT '0.0'",
+            "ALTER TABLE users ADD COLUMN real_portfolio JSON DEFAULT '{}'",
+            "ALTER TABLE users ADD COLUMN real_bank VARCHAR DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN real_cash VARCHAR DEFAULT '0.0'",
+            "ALTER TABLE users ADD COLUMN account_mode VARCHAR DEFAULT 'demo'",
         ]:
             try:
                 conn.exec_driver_sql(ddl)
@@ -109,6 +121,12 @@ def _user_to_legacy_dict(user: User) -> dict:
         "trade_log": user.trade_log or [],
         "price_alarms": user.price_alarms or [],
         "onboarding_gorundu": bool(user.onboarding_gorundu),
+        "pending_orders": getattr(user, "pending_orders", None) or [],
+        "blocked_cash": float(user.blocked_cash) if getattr(user, "blocked_cash", None) not in (None, "") else 0.0,
+        "real_portfolio": getattr(user, "real_portfolio", None) or {},
+        "real_bank": getattr(user, "real_bank", "") or "",
+        "real_cash": float(user.real_cash) if getattr(user, "real_cash", None) not in (None, "") else 0.0,
+        "account_mode": getattr(user, "account_mode", "demo") or "demo",
     }
 
 
@@ -151,6 +169,12 @@ def upsert_users_from_dict(db_dict: dict) -> None:
             user.trade_log = data.get("trade_log", [])
             user.price_alarms = data.get("price_alarms", [])
             user.onboarding_gorundu = "1" if data.get("onboarding_gorundu") else ""
+            user.pending_orders = data.get("pending_orders", [])
+            user.blocked_cash = str(data.get("blocked_cash", 0.0))
+            user.real_portfolio = data.get("real_portfolio", {})
+            user.real_bank = data.get("real_bank", "")
+            user.real_cash = str(data.get("real_cash", 0.0))
+            user.account_mode = data.get("account_mode", "demo")
         session.commit()
     except SQLAlchemyError:
         session.rollback()
