@@ -276,7 +276,7 @@ export default function Sidebar({
             <div className="sidebar-avatar-daire">{baharf}</div>
             <div className="sidebar-kullanici-bilgi">
               <div className="sidebar-selam">{karsilama()},</div>
-              <div className="sidebar-ad-soyad">
+              <div className="sidebar-kullanici-ad">
                 {`${ad || 'Kurumsal'} ${soyad || 'Trader'}`.trim()}
               </div>
               <div className="sidebar-rozet-satir">
@@ -371,7 +371,7 @@ export default function Sidebar({
                   >
                     <span className="sidebar-oge-ikon">{item.ikon}</span>
                     <div className="sidebar-oge-metinler">
-                      <span className="sidebar-oge-ad">{item.modul}</span>
+                      <span className="sidebar-oge-metin">{item.modul}</span>
                       <span className="sidebar-oge-kat">{item.kat}</span>
                     </div>
                   </button>
@@ -393,7 +393,7 @@ export default function Sidebar({
                 }}
               >
                 <span className="sidebar-oge-ikon">🏛️</span>
-                <span className="sidebar-oge-ad" style={{ fontWeight: 600 }}>Ana Sayfa Kokpiti</span>
+                <span className="sidebar-oge-metin" style={{ fontWeight: 600 }}>Ana Sayfa Kokpiti</span>
                 {kategori === 'Ana Sayfa' && <span className="sidebar-aktif-nokta" />}
               </button>
 
@@ -406,7 +406,7 @@ export default function Sidebar({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span>📈</span>
-                    <span className="kategori-ad">Analiz Masası</span>
+                    <span className="sidebar-kategori-metin">Analiz Masası</span>
                     <span className="kategori-sayac">7</span>
                   </div>
                   <span className={`kategori-ok ${genisleyenKat['Analiz'] ? 'acik' : ''}`}>▾</span>
@@ -427,7 +427,19 @@ export default function Sidebar({
                           }}
                         >
                           <span className="sub-ikon">{MODUL_IKONLARI[m] || '📌'}</span>
-                          <span className="sub-ad">{m}</span>
+                          <span
+                            className="sidebar-modul-metin"
+                            style={{
+                              flex: 1,
+                              textAlign: 'left',
+                              fontSize: 12.5,
+                              fontWeight: aktif ? 700 : 500,
+                              color: aktif ? '#D7FF4E' : '#e0e3eb',
+                              display: 'inline-block',
+                            }}
+                          >
+                            {m}
+                          </span>
                           {aktif && <span className="sub-aktif-isaret">✓</span>}
                         </button>
                       );
@@ -445,7 +457,7 @@ export default function Sidebar({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span>💼</span>
-                    <span className="kategori-ad">Portföy Masası</span>
+                    <span className="sidebar-kategori-metin" style={{ color: '#f0f3fa', fontSize: 13, fontWeight: 600 }}>Portföy Masası</span>
                     <span className="kategori-sayac">5</span>
                   </div>
                   <span className={`kategori-ok ${genisleyenKat['Portföy'] ? 'acik' : ''}`}>▾</span>
@@ -466,7 +478,19 @@ export default function Sidebar({
                           }}
                         >
                           <span className="sub-ikon">{MODUL_IKONLARI[m] || '📌'}</span>
-                          <span className="sub-ad">{m}</span>
+                          <span
+                            className="sidebar-modul-metin"
+                            style={{
+                              flex: 1,
+                              textAlign: 'left',
+                              fontSize: 12.5,
+                              fontWeight: aktif ? 700 : 500,
+                              color: aktif ? '#D7FF4E' : '#e0e3eb',
+                              display: 'inline-block',
+                            }}
+                          >
+                            {m}
+                          </span>
                           {aktif && <span className="sub-aktif-isaret">✓</span>}
                         </button>
                       );
@@ -484,7 +508,7 @@ export default function Sidebar({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span>🛠️</span>
-                    <span className="kategori-ad">Kurumsal Araçlar</span>
+                    <span className="sidebar-kategori-metin" style={{ color: '#f0f3fa', fontSize: 13, fontWeight: 600 }}>Kurumsal Araçlar</span>
                     <span className="kategori-sayac">4</span>
                   </div>
                   <span className={`kategori-ok ${genisleyenKat['Araçlar'] ? 'acik' : ''}`}>▾</span>
@@ -505,7 +529,19 @@ export default function Sidebar({
                           }}
                         >
                           <span className="sub-ikon">{MODUL_IKONLARI[m] || '📌'}</span>
-                          <span className="sub-ad">{m}</span>
+                          <span
+                            className="sidebar-modul-metin"
+                            style={{
+                              flex: 1,
+                              textAlign: 'left',
+                              fontSize: 12.5,
+                              fontWeight: aktif ? 700 : 500,
+                              color: aktif ? '#D7FF4E' : '#e0e3eb',
+                              display: 'inline-block',
+                            }}
+                          >
+                            {m}
+                          </span>
                           {aktif && <span className="sub-aktif-isaret">✓</span>}
                         </button>
                       );

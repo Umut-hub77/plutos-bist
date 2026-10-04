@@ -293,7 +293,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
                   {item.kat === 'hisse' ? 'HİSSE' : item.kat === 'endeks' ? 'ENDEKS' : item.kat === 'doviz' ? 'DÖVİZ' : 'EMTİA'}
                 </span>
                 <span className="sembol">{item.s}</span>
-                <span className="sirket-ad">{item.ad}</span>
+                <span className="sirket-isim">{item.ad}</span>
                 <span className="fiyat">{item.f}</span>
                 <span className={`fark ${item.y ? 'yukari' : 'asagi'}`}>
                   {item.y ? '▲' : '▼'} {item.d}

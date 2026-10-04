@@ -172,7 +172,7 @@ button.primary:hover { background: var(--gold-strong); }
 }
 .sidebar-kullanici-bilgi { display: flex; flex-direction: column; }
 .sidebar-selam { font-size: 11px; color: #787b86; }
-.sidebar-ad-soyad { font-size: 13.5px; font-weight: 700; color: #f0f3fa; }
+.sidebar-kullanici-ad { font-size: 13.5px; font-weight: 700; color: #f0f3fa; }
 .sidebar-rozet-satir { display: flex; align-items: center; gap: 5px; margin-top: 2px; }
 .sidebar-pro-badge {
   font-size: 9.5px; color: #089981; font-weight: 700; background: rgba(8, 153, 129, 0.15);
@@ -259,17 +259,65 @@ button.primary:hover { background: var(--gold-strong); }
 .kategori-ok { font-size: 11px; color: #787b86; transition: transform 0.2s; }
 .kategori-ok.acik { transform: rotate(180deg); }
 
+.sidebar-kategori-metin {
+  color: #f0f3fa !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.sidebar-oge-metin {
+  color: #f0f3fa !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
 .sidebar-alt-moduller { display: flex; flex-direction: column; padding: 3px; gap: 2px; }
 .sidebar-sub-oge {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px;
   border: 1px solid transparent; border-radius: 6px; background: transparent;
-  color: #9ca3af; font-size: 12px; cursor: pointer; text-align: left; transition: all 0.15s;
+  color: #d1d4dc; font-size: 12.5px; cursor: pointer; text-align: left; transition: all 0.15s;
 }
 .sidebar-sub-oge:hover { background: rgba(255, 255, 255, 0.04); color: #ffffff; }
 .sidebar-sub-oge.aktif {
   background: rgba(215, 255, 78, 0.1); border-color: rgba(215, 255, 78, 0.3); color: #D7FF4E; font-weight: 600;
 }
-.sub-aktif-isaret { margin-left: auto; color: #D7FF4E; font-weight: 700; font-size: 12px; }
+
+.sidebar-modul-metin {
+  color: #d1d4dc !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  flex: 1 !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  line-height: 1.4 !important;
+}
+.sidebar-sub-oge:hover .sidebar-modul-metin {
+  color: #ffffff !important;
+}
+.sidebar-sub-oge.aktif .sidebar-modul-metin {
+  color: #D7FF4E !important;
+  font-weight: 700 !important;
+}
+
+.sub-ikon {
+  font-size: 14px !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.sub-aktif-isaret { margin-left: auto; color: #D7FF4E; font-weight: 700; font-size: 12px; flex-shrink: 0; }
 
 .sidebar-kisayollar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .sidebar-kisayol-btn {
@@ -1411,7 +1459,7 @@ code { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; background: 
   letter-spacing: 0.02em;
 }
 
-.ticker-oge .sirket-ad {
+.ticker-oge .sirket-isim {
   font-family: 'Inter', sans-serif;
   font-size: 11px;
   color: #8E929E;
