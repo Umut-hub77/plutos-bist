@@ -62,7 +62,12 @@ export function temaliLayout(layout = {}) {
   };
   const eksenler = new Set(['xaxis', 'yaxis', ...Object.keys(layout).filter(k => /^[xy]axis\d*$/.test(k))]);
   eksenler.forEach(k => {
-    out[k] = { ...eksenStil, ...(layout[k] || {}) };
+    const isY = k.startsWith('y');
+    out[k] = {
+      ...eksenStil,
+      ...(isY ? { fixedrange: true } : {}), // Y-ekseni sabit tutulur, böylece sıkıştırma/açma hareketleri zaman (X) eksenini genişletir/daraltır
+      ...(layout[k] || {}),
+    };
   });
   return out;
 }
@@ -90,7 +95,7 @@ export function altPanelEksenleri(alanlar, sonEtiketAyari = {}, yan = 'right') {
       domain: d,
       anchor: 'x' + s,
       side: yan,
-      fixedrange: false,
+      fixedrange: true, // Dikdörtgen kutu seçimini engeller, zaman eksenini zoomlatır
       tickfont: { size: 10, color: TEMA.muted, family: "'JetBrains Mono', monospace" },
     };
     l['xaxis' + s] = {

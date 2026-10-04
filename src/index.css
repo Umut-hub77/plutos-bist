@@ -3284,4 +3284,16 @@ button.primary:hover {
   pointer-events: none !important;
 }
 
+/* Dikdörtgen kutu seçimini (box zoom / select) kalıcı olarak engelle */
+.zoombox,
+.select-outline,
+.zoombox-corners,
+.selectionlayer {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+
 
