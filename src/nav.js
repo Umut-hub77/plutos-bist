@@ -27,7 +27,25 @@ export const ACIKLAMA = {
   'WhatsApp Botu': "Günlük piyasa özetini otomatik olarak WhatsApp'a gönderecek şekilde ayarlayın.",
   'Fiyat Alarmları': 'Bir hisse belirlediğiniz fiyata gelince bildirim alın.',
 };
-
+export const MODUL_IKONLARI = {
+  'Ana Sayfa': '🏛️',
+  'Stratejik Analiz': '🎯',
+  'Hisse Araştırma': '🔎',
+  'Piyasa Tarayıcı': '📡',
+  'AI Gelecek': '🔮',
+  'Backtest': '⏳',
+  'Sektör Karşılaştırma': '📊',
+  'Temettü': '💰',
+  'Portföy İzleme': '💼',
+  'İzleme Listesi': '⭐',
+  'Portföy Optimizasyonu': '⚖️',
+  'Emir Ver (Demo)': '⚡',
+  'Performans & Risk': '📉',
+  'AI Asistan': '🤖',
+  'Finansal Özgürlük (FIRE)': '🔥',
+  'WhatsApp Botu': '💬',
+  'Fiyat Alarmları': '🔔',
+};
 // Tüm modüller React'e taşındı. İleride yeni bir modül eklerseniz, bileşeni yazana kadar
 // menüde "yakında" sayfası görünmesi için buraya yol haritası satırı ekleyebilirsiniz:
 //   'Modül Adı': { satir: '123', endpoint: 'GET /api/x', motor: 'açıklama' },

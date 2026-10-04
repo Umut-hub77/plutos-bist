@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Logo from './components/Logo.jsx';
-import { KATEGORILER, UST_SEKMELER, ACIKLAMA } from './nav.js';
+import { KATEGORILER, UST_SEKMELER, ACIKLAMA, MODUL_IKONLARI } from './nav.js';
 import { SAYFALAR } from './pages/index.js';
 import Yakinda from './pages/Yakinda.jsx';
 import { apiOlustur } from './api.js';
@@ -212,6 +212,29 @@ function ShellIc({ token, ad, soyad, onCikis }) {
           setSidebarAcik(false);
           setBankaModalAcik(true);
         }}
+        kategori={kategori}
+        aktifModul={aktifModul}
+        onModulSec={(kat, m) => {
+          setBildirimAcik(false);
+          setKategori(kat);
+          setModul(s => ({ ...s, [kat]: m }));
+        }}
+        bildirimSayisi={bildirimSayisi}
+        onBildirimAc={() => {
+          setSidebarAcik(false);
+          setBildirimAcik(true);
+        }}
+        onRehberAc={() => {
+          setSidebarAcik(false);
+          setRehberAcik(true);
+        }}
+        onTradeAllAc={() => {
+          setSidebarAcik(false);
+          setTradeAllModalAcik(true);
+        }}
+        accountMode={accountMode}
+        onHesapModuDegistir={(yeniMod) => hesapModuAyarla(yeniMod)}
+        bakiye={bakiye}
       />
 
       <div className="ana-alan">
@@ -456,40 +479,93 @@ function ShellIc({ token, ad, soyad, onCikis }) {
             </div>
           ) : (
             <>
-              {/* Ana Kategori Navigasyonu */}
-              <nav className="nav-ust" style={{ borderColor: '#2A2E39', marginBottom: 12 }}>
-                {UST_SEKMELER.map(k => (
-                  <button
-                    key={k}
-                    className={k === kategori ? 'aktif' : ''}
-                    onClick={() => setKategori(k)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <span>{KATEGORI_IKONLARI[k] || '📌'}</span>
-                    <span>{k}</span>
-                  </button>
-                ))}
-              </nav>
+              {/* 1. Masaüstü Navigasyonu (Sadece > 1024px ekranlarda görünür) */}
+              <div className="nav-desktop-yalnizca">
+                <nav className="nav-ust" style={{ borderColor: '#2A2E39', marginBottom: 12 }}>
+                  {UST_SEKMELER.map(k => (
+                    <button
+                      key={k}
+                      className={k === kategori ? 'aktif' : ''}
+                      onClick={() => setKategori(k)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <span>{KATEGORI_IKONLARI[k] || '📌'}</span>
+                      <span>{k}</span>
+                    </button>
+                  ))}
+                </nav>
 
-              {/* Alt Modül Navigasyonu */}
+                {kategori !== 'Ana Sayfa' && (
+                  <div style={{ marginBottom: 16 }}>
+                    <nav className="nav-alt" style={{ gap: 8 }}>
+                      {KATEGORILER[kategori].map(m => (
+                        <button
+                          key={m}
+                          className={m === aktifModul ? 'aktif' : ''}
+                          onClick={() => setModul(s => ({ ...s, [kategori]: m }))}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </nav>
+                    {ACIKLAMA[aktifModul] && (
+                      <p className="nav-aciklama" style={{ fontSize: 12.5, color: '#787B86', marginTop: 8 }}>
+                        ℹ️ {ACIKLAMA[aktifModul]}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Mobil ve Tablet Hamburger Menü & Akıllı Başlık Çubuğu (<= 1024px) */}
+              <div className="mobil-tablet-nav-bar">
+                <button
+                  type="button"
+                  className="mobil-hamburger-bar-btn"
+                  onClick={() => setSidebarAcik(true)}
+                  aria-label="Tüm Menüyü ve Modülleri Aç"
+                  title="Menüyü Aç"
+                >
+                  <span className="mobil-bar-ikon">☰</span>
+                  <div className="mobil-bar-metinler">
+                    <span className="mobil-bar-kat">{KATEGORI_IKONLARI[kategori] || '📌'} {kategori}</span>
+                    <span className="mobil-bar-modul">{ekranAdi}</span>
+                  </div>
+                  <span className="mobil-bar-ok">▾</span>
+                </button>
+
+                <div className="mobil-bar-kat-chipler">
+                  {UST_SEKMELER.map(k => (
+                    <button
+                      key={k}
+                      type="button"
+                      className={`mobil-bar-chip ${k === kategori ? 'aktif' : ''}`}
+                      onClick={() => {
+                        setBildirimAcik(false);
+                        setKategori(k);
+                      }}
+                    >
+                      <span>{KATEGORI_IKONLARI[k] || '📌'}</span>
+                      <span className="mobil-chip-yazi">{k}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Mobil ve Tablet Alt Modül Hızlı Kaydırma Çubuğu (Ana Sayfa hariç) */}
               {kategori !== 'Ana Sayfa' && (
-                <div style={{ marginBottom: 16 }}>
-                  <nav className="nav-alt" style={{ gap: 8 }}>
-                    {KATEGORILER[kategori].map(m => (
-                      <button
-                        key={m}
-                        className={m === aktifModul ? 'aktif' : ''}
-                        onClick={() => setModul(s => ({ ...s, [kategori]: m }))}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </nav>
-                  {ACIKLAMA[aktifModul] && (
-                    <p className="nav-aciklama" style={{ fontSize: 12.5, color: '#787B86', marginTop: 8 }}>
-                      ℹ️ {ACIKLAMA[aktifModul]}
-                    </p>
-                  )}
+                <div className="mobil-alt-modul-cubuk">
+                  {KATEGORILER[kategori].map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`mobil-alt-modul-chip ${m === aktifModul ? 'aktif' : ''}`}
+                      onClick={() => setModul(s => ({ ...s, [kategori]: m }))}
+                    >
+                      <span>{MODUL_IKONLARI[m] || '📌'}</span>
+                      <span>{m}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </>

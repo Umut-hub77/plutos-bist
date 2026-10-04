@@ -181,6 +181,16 @@ class DogrulamaKoduOnaylaIstek(BaseModel):
     code: str
 
 
+class SifremiUnuttumKodIstek(BaseModel):
+    email: str
+
+
+class SifremiUnuttumSifirlaIstek(BaseModel):
+    email: str
+    code: str
+    new_password: str
+
+
 class EmirIstek(BaseModel):
     hisse: str
     yon: str          # "AL" | "SAT"
@@ -305,12 +315,6 @@ def auth_send_verification(istek: DogrulamaKoduGonderIstek):
         "message": f"6 haneli doğrulama kodu {email} adresine gönderildi.",
         "smtp_aktif": is_smtp_configured(),
     }
-
-    # Sunucuda henüz SMTP yapılandırılmadıysa test/geliştirici kodunu da sağla
-    if not is_smtp_configured():
-        resp["dev_code"] = code
-        resp["dev_mesaj"] = f"Test Doğrulama Kodu: {code} (Canlıda gerçek e-posta teslimi için SMTP tanımlanmalıdır)"
-
     return resp
 
 
@@ -384,6 +388,96 @@ def auth_verify_and_register(istek: DogrulamaKoduOnaylaIstek):
         "ad": kayit["ad"],
         "soyad": kayit["soyad"],
         "message": "E-posta adresiniz doğrulandı ve hesabınız başarıyla açıldı."
+    }
+
+
+BEKLEYEN_SIFRE_SIFIRLAMALAR: dict[str, dict] = {}
+
+
+@app.post("/api/auth/forgot-password/send-code")
+def sifremi_unuttum_kod_gonder(istek: SifremiUnuttumKodIstek):
+    email = _temiz_email(istek.email)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Bu e-posta adresine kayıtlı bir hesap bulunamadı.")
+
+    code = f"{secrets.randbelow(900000) + 100000}"
+    exp = datetime.utcnow() + timedelta(minutes=10)
+    BEKLEYEN_SIFRE_SIFIRLAMALAR[email] = {
+        "code": code,
+        "exp": exp,
+        "attempts": 0,
+    }
+
+    tam_ad = f"{kullanici.get('ad', '')} {kullanici.get('soyad', '')}".strip() or "Trader"
+    send_verification_email(email, code, tam_ad)
+
+    return {
+        "ok": True,
+        "email": email,
+        "message": f"6 haneli şifre sıfırlama kodu {email} adresine iletildi."
+    }
+
+
+@app.post("/api/auth/forgot-password/reset")
+def sifremi_unuttum_sifirla(istek: SifremiUnuttumSifirlaIstek):
+    email = _temiz_email(istek.email)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    kayit = BEKLEYEN_SIFRE_SIFIRLAMALAR.get(email)
+    if not kayit:
+        raise HTTPException(status_code=400, detail="Aktif bir şifre sıfırlama oturumu bulunamadı. Lütfen tekrar kod talep ediniz.")
+
+    if datetime.utcnow() > kayit["exp"]:
+        BEKLEYEN_SIFRE_SIFIRLAMALAR.pop(email, None)
+        raise HTTPException(status_code=400, detail="Doğrulama kodunun süresi dolmuş. Lütfen yeni kod isteyiniz.")
+
+    if (istek.code or "").strip() != kayit["code"]:
+        kayit["attempts"] += 1
+        if kayit["attempts"] >= 5:
+            BEKLEYEN_SIFRE_SIFIRLAMALAR.pop(email, None)
+            raise HTTPException(status_code=429, detail="Çok fazla hatalı kod denendi. Lütfen baştan kod talep ediniz.")
+        raise HTTPException(status_code=400, detail="Doğrulama kodu hatalı.")
+
+    if len(istek.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Yeni şifreniz en az 6 karakter olmalıdır.")
+
+    kullanici["password"] = hash_password(istek.new_password)
+    upsert_user(email, kullanici)
+    BEKLEYEN_SIFRE_SIFIRLAMALAR.pop(email, None)
+
+    token = _token_uret(email)
+    return {
+        "ok": True,
+        "token": token,
+        "ad": kullanici.get("ad", ""),
+        "soyad": kullanici.get("soyad", ""),
+        "message": "Şifreniz başarıyla yenilendi. Giriş yapıldı."
+    }
+
+
+@app.get("/api/public/market-summary")
+def public_market_summary():
+    """Giriş ekranında veya halka açık gösterilecek anlık BIST piyasa özeti."""
+    now = datetime.now()
+    seans_acik = (now.weekday() < 5) and (10 <= now.hour < 18 or (now.hour == 18 and now.minute <= 5))
+    return {
+        "bist100": {
+            "endeks": "BIST 100",
+            "puan": "12.249,04",
+            "degisim": "+2,53%",
+            "yon": "yukari",
+            "seans_durumu": "SÜREKLİ MÜZAYEDE (10:00 - 18:05)" if seans_acik else "SEANS KAPALI",
+            "seans_acik": seans_acik,
+        },
+        "ozet_kartlar": [
+            {"sembol": "BIST 100", "ad": "BIST 100 Endeksi", "deger": "12.249,04", "degisim": "+2,53%", "yukari": True},
+            {"sembol": "BIST 30", "ad": "BIST 30 Endeksi", "deger": "15.218,47", "degisim": "+2,54%", "yukari": True},
+            {"sembol": "USD/TRY", "ad": "Dolar / TL", "deger": "49,03 ₺", "degisim": "+0,04%", "yukari": True},
+            {"sembol": "GRAM ALTIN", "ad": "Gram Altın", "deger": "6.582,40 ₺", "degisim": "+0,48%", "yukari": True},
+        ]
     }
 
 
@@ -1731,7 +1825,10 @@ if os.path.exists(_DIST_KLASORU) and os.path.exists(os.path.join(_DIST_KLASORU, 
         hedef_dosya = os.path.join(_DIST_KLASORU, tam_yol)
         if os.path.isfile(hedef_dosya):
             return FileResponse(hedef_dosya)
-        return FileResponse(os.path.join(_DIST_KLASORU, "index.html"))
+        return FileResponse(
+            os.path.join(_DIST_KLASORU, "index.html"),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+        )
 else:
     @app.get("/")
     def kok():
