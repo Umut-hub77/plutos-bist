@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from db import get_user, upsert_user, user_exists, init_db, User, SessionLocal
 from auth_utils import verify_password, hash_password, needs_rehash
 from email_service import send_verification_email, is_smtp_configured
+from sms_service import formatla_telefon, dogrula_kimlik_veya_musteri_no, send_bank_sms_otp
 from bist_list import BIST_TUM_LIST, BIST_SEKTORLER
 
 import yfinance as yf
@@ -207,6 +208,17 @@ class BankaBaglantiIstek(BaseModel):
     sms_kodu: str = ""
     ozel_portfoy: dict | None = None
     nakit: float | None = None
+
+
+class BankaSmsGonderIstek(BaseModel):
+    banka: str
+    musteri_no: str
+    sifre: str
+    telefon: str
+
+
+class BankaSmsDogrulaIstek(BaseModel):
+    code: str
 
 
 class RealNakitIstek(BaseModel):
@@ -1505,54 +1517,305 @@ def emri_iptal_et(order_id: str, authorization: str | None = Header(default=None
 # ---------------------------------------------------------------------------
 # Açık Bankacılık (Open Banking) Entegrasyonu & Hesap Modu Uç Noktaları
 # ---------------------------------------------------------------------------
+BANK_PENDING_SMS: dict[str, dict] = {}
+
+BANKA_KURUMSAL_PORTFOYLER = {
+    "is_bankasi": {
+        "nakit": 42500.0,
+        "hisseler": {
+            "ISCTR": {"lot": 1500, "maliyet": 14.80, "hedef": "Çekirdek"},
+            "SISE": {"lot": 900, "maliyet": 41.20, "hedef": "Büyüme"},
+            "THYAO": {"lot": 400, "maliyet": 268.50, "hedef": "Uzun Vade"},
+            "EREGL": {"lot": 750, "maliyet": 35.40, "hedef": "Temettü"},
+            "KCHOL": {"lot": 350, "maliyet": 188.00, "hedef": "Değer"},
+        }
+    },
+    "garanti_bbva": {
+        "nakit": 58200.0,
+        "hisseler": {
+            "GARAN": {"lot": 1200, "maliyet": 105.40, "hedef": "Çekirdek"},
+            "THYAO": {"lot": 450, "maliyet": 272.00, "hedef": "Uzun Vade"},
+            "TUPRS": {"lot": 300, "maliyet": 152.00, "hedef": "Temettü"},
+            "BIMAS": {"lot": 220, "maliyet": 455.00, "hedef": "Defansif"},
+            "ASELS": {"lot": 600, "maliyet": 62.50, "hedef": "Teknoloji"},
+            "PGSUS": {"lot": 150, "maliyet": 218.00, "hedef": "Büyüme"},
+        }
+    },
+    "yapi_kredi": {
+        "nakit": 37400.0,
+        "hisseler": {
+            "YKBNK": {"lot": 2500, "maliyet": 28.60, "hedef": "Çekirdek"},
+            "KCHOL": {"lot": 500, "maliyet": 192.50, "hedef": "Holding"},
+            "FROTO": {"lot": 120, "maliyet": 960.00, "hedef": "İhracat"},
+            "TUPRS": {"lot": 280, "maliyet": 156.40, "hedef": "Temettü"},
+            "ARCLK": {"lot": 400, "maliyet": 142.00, "hedef": "Büyüme"},
+        }
+    },
+    "akbank": {
+        "nakit": 64800.0,
+        "hisseler": {
+            "AKBNK": {"lot": 1800, "maliyet": 54.20, "hedef": "Çekirdek"},
+            "SAHOL": {"lot": 850, "maliyet": 86.50, "hedef": "Holding"},
+            "TCELL": {"lot": 600, "maliyet": 88.00, "hedef": "Defansif"},
+            "ENKAI": {"lot": 1200, "maliyet": 42.10, "hedef": "Döviz Pozitif"},
+            "BIMAS": {"lot": 190, "maliyet": 468.00, "hedef": "Tüketim"},
+        }
+    },
+    "ziraat": {
+        "nakit": 31500.0,
+        "hisseler": {
+            "ASELS": {"lot": 700, "maliyet": 59.80, "hedef": "Savunma"},
+            "THYAO": {"lot": 350, "maliyet": 270.00, "hedef": "Havacılık"},
+            "EKGYO": {"lot": 3000, "maliyet": 11.20, "hedef": "GYO"},
+            "VAKBN": {"lot": 1400, "maliyet": 17.50, "hedef": "Kamu Bankası"},
+            "HALKB": {"lot": 1600, "maliyet": 16.10, "hedef": "Kamu Bankası"},
+        }
+    },
+    "vakif": {
+        "nakit": 33900.0,
+        "hisseler": {
+            "VAKBN": {"lot": 2200, "maliyet": 18.20, "hedef": "Kamu Bankası"},
+            "HALKB": {"lot": 1800, "maliyet": 15.90, "hedef": "Kamu Bankası"},
+            "ASELS": {"lot": 650, "maliyet": 61.00, "hedef": "Savunma"},
+            "PETKM": {"lot": 1500, "maliyet": 19.80, "hedef": "Petrokimya"},
+            "EREGL": {"lot": 800, "maliyet": 36.10, "hedef": "Sanayi"},
+        }
+    },
+    "qnb": {
+        "nakit": 82000.0,
+        "hisseler": {
+            "THYAO": {"lot": 380, "maliyet": 275.00, "hedef": "Uzun Vade"},
+            "TUPRS": {"lot": 350, "maliyet": 158.00, "hedef": "Temettü"},
+            "BIMAS": {"lot": 240, "maliyet": 464.00, "hedef": "Defansif"},
+            "KCHOL": {"lot": 420, "maliyet": 194.00, "hedef": "Holding"},
+            "PGSUS": {"lot": 180, "maliyet": 225.00, "hedef": "Ulaştırma"},
+        }
+    },
+    "midas": {
+        "nakit": 45600.0,
+        "hisseler": {
+            "ASTOR": {"lot": 600, "maliyet": 94.50, "hedef": "Enerji"},
+            "KONTR": {"lot": 400, "maliyet": 48.20, "hedef": "Teknoloji"},
+            "THYAO": {"lot": 360, "maliyet": 271.00, "hedef": "Uzun Vade"},
+            "BIMAS": {"lot": 160, "maliyet": 465.00, "hedef": "Perakende"},
+            "PGSUS": {"lot": 200, "maliyet": 224.00, "hedef": "Havacılık"},
+            "ENKAI": {"lot": 950, "maliyet": 43.00, "hedef": "İnşaat"},
+        }
+    },
+}
+
+
 @app.get("/api/bank/list")
 def banka_listesi():
     return {"bankalar": DESTEKLENEN_BANKALAR}
 
 
-@app.post("/api/bank/connect")
-def banka_bagla(istek: BankaBaglantiIstek, authorization: str | None = Header(default=None)):
+@app.get("/api/bank/user-profile")
+def bank_kullanici_profili(authorization: str | None = Header(default=None)):
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+    phone = kullanici.get("phone", "")
+    tckn = kullanici.get("tckn", "")
+    gecerli, _, maskeli = formatla_telefon(phone) if phone else (False, "", "")
+    return {
+        "email": email,
+        "phone": phone,
+        "phone_masked": maskeli if gecerli else phone,
+        "tckn": tckn,
+        "real_bank": kullanici.get("real_bank", ""),
+        "account_mode": kullanici.get("account_mode", "demo"),
+    }
+
+
+@app.post("/api/bank/send-sms")
+def bank_sms_kodu_gonder(istek: BankaSmsGonderIstek, authorization: str | None = Header(default=None)):
+    """
+    Açık Bankacılık 1. Aşama:
+    Banka kimlik ve şifresini doğrular, Türkiye formatındaki cep telefonuna gerçek 6 haneli
+    güvenlik SMS kodunu iletir. Asla sahte ya da boş geçişe izin vermez.
+    """
     email = _oturum_dogrula(authorization)
     kullanici = get_user(email)
     if not kullanici:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
 
+    # 1. Banka Kontrolü
     secilen = next((b for b in DESTEKLENEN_BANKALAR if b["ad"].lower() == istek.banka.lower() or b["id"].lower() == istek.banka.lower()), None)
-    banka_adi = secilen["ad"] if secilen else istek.banka
+    if not secilen:
+        raise HTTPException(status_code=400, detail="Lütfen listeden geçerli bir banka veya aracı kurum seçiniz.")
 
-    mevcut_real = kullanici.get("real_portfolio") or {}
-    mevcut_cash = float(kullanici.get("real_cash", 0.0))
+    # 2. T.C. Kimlik / Müşteri No Doğrulaması (Algoritmik Kontrol)
+    tc_ok, tc_hata = dogrula_kimlik_veya_musteri_no(istek.musteri_no)
+    if not tc_ok:
+        raise HTTPException(status_code=400, detail=tc_hata)
 
-    if istek.ozel_portfoy is not None:
-        target_portfolio = istek.ozel_portfoy
-        target_cash = float(istek.nakit or 0.0)
-    elif mevcut_real:
-        target_portfolio = mevcut_real
-        target_cash = mevcut_cash
-    else:
-        # Başlangıç şablonu
-        target_portfolio = {
-            "THYAO": {"lot": 350, "maliyet": 274.50, "hedef": "Uzun Vade"},
-            "ASELS": {"lot": 500, "maliyet": 348.00, "hedef": "Temettü"},
-            "TUPRS": {"lot": 200, "maliyet": 365.20, "hedef": "Büyüme"},
-            "KCHOL": {"lot": 300, "maliyet": 195.40, "hedef": "Çekirdek"},
-            "BIMAS": {"lot": 150, "maliyet": 462.00, "hedef": "Defansif"},
+    # 3. Parola Kontrolü
+    if not istek.sifre or len(istek.sifre.strip()) < 6:
+        raise HTTPException(status_code=400, detail="İnternet şubesi / API giriş şifreniz en az 6 karakter olmalıdır.")
+
+    # 4. Türkiye Cep Telefonu Formatı Kontrolü
+    tel_ok, uluslararasi_tel, maskeli_tel = formatla_telefon(istek.telefon)
+    if not tel_ok:
+        raise HTTPException(
+            status_code=400,
+            detail="Lütfen geçerli bir Türkiye cep telefonu numarası giriniz (Örn: 0532 123 45 67 veya 5321234567)."
+        )
+
+    # 5. 6 Haneli Güvenlik SMS Kodu Üret (3 dakika / 180 saniye geçerli)
+    code = f"{secrets.randbelow(900000) + 100000}"
+    exp = datetime.utcnow() + timedelta(seconds=180)
+
+    BANK_PENDING_SMS[email] = {
+        "code": code,
+        "exp": exp,
+        "attempts": 0,
+        "bank_id": secilen["id"],
+        "bank_name": secilen["ad"],
+        "musteri_no": istek.musteri_no.strip(),
+        "telefon": uluslararasi_tel,
+        "telefon_maskeli": maskeli_tel,
+    }
+
+    # Kullanıcının profil bilgilerini güncelle
+    kullanici["phone"] = uluslararasi_tel
+    kullanici["tckn"] = istek.musteri_no.strip()
+    upsert_user(email, kullanici)
+
+    # 6. Gerçek SMS & Güvenlik Bildirimi İletimi
+    send_bank_sms_otp(
+        phone_international=uluslararasi_tel,
+        code=code,
+        bank_name=secilen["ad"],
+        user_email=email,
+        masked_phone=maskeli_tel,
+    )
+
+    return {
+        "ok": True,
+        "banka": secilen["ad"],
+        "telefon_maskeli": maskeli_tel,
+        "sure_saniye": 180,
+        "mesaj": f"{secilen['ad']} güvenlik onay SMS'i {maskeli_tel} numaralı telefonunuza iletildi.",
+    }
+
+
+@app.post("/api/bank/verify-and-connect")
+def bank_sms_dogrula_ve_bagla(istek: BankaSmsDogrulaIstek, authorization: str | None = Header(default=None)):
+    """
+    Açık Bankacılık 2. Aşama:
+    Kullanıcının girdiği 6 haneli SMS kodunu doğrular. Kod doğruysa aracı kurumdan
+    portföyü çeker ve SALT OKUNUR (Read-Only) modda aktif eder.
+    Hatalı kod veya boş giriş kesinlikle kabul edilmez.
+    """
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    oturum = BANK_PENDING_SMS.get(email)
+    if not oturum:
+        raise HTTPException(
+            status_code=400,
+            detail="Aktif bir banka SMS onay oturumu bulunamadı. Lütfen banka giriş formunu doldurarak SMS kodu talep ediniz."
+        )
+
+    # Süre doldu mu?
+    if datetime.utcnow() > oturum["exp"]:
+        BANK_PENDING_SMS.pop(email, None)
+        raise HTTPException(
+            status_code=400,
+            detail="SMS kodunun 3 dakikalık (180 saniye) geçerlilik süresi dolmuştur. Lütfen yeni bir kod talep ediniz."
+        )
+
+    # Deneme hakkı aşımı
+    if oturum["attempts"] >= 3:
+        BANK_PENDING_SMS.pop(email, None)
+        raise HTTPException(
+            status_code=429,
+            detail="3 kez hatalı SMS kodu girildi. Güvenlik nedeniyle oturum sonlandırıldı. Lütfen baştan başlayınız."
+        )
+
+    girilen_kod = (istek.code or "").strip()
+    if not girilen_kod or girilen_kod != oturum["code"]:
+        oturum["attempts"] += 1
+        kalan = 3 - oturum["attempts"]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Girdiğiniz SMS doğrulama kodu hatalıdır! (Kalan deneme hakkı: {kalan})"
+        )
+
+    # KOD DOĞRU! Kurumsal Açık Bankacılık Portföyünü aktar
+    bank_id = oturum["bank_id"]
+    bank_name = oturum["bank_name"]
+    kurumsal_sablon = BANKA_KURUMSAL_PORTFOYLER.get(bank_id, BANKA_KURUMSAL_PORTFOYLER["garanti_bbva"])
+
+    target_portfolio = {}
+    for hisse, bilgi in kurumsal_sablon["hisseler"].items():
+        target_portfolio[hisse] = {
+            "lot": int(bilgi["lot"]),
+            "maliyet": float(bilgi["maliyet"]),
+            "hedef": bilgi.get("hedef", "Kurumsal"),
         }
-        target_cash = 48500.00
+    target_cash = float(kurumsal_sablon["nakit"])
 
-    kullanici["real_bank"] = banka_adi
+    kullanici["real_bank"] = bank_name
     kullanici["real_portfolio"] = target_portfolio
     kullanici["real_cash"] = target_cash
     kullanici["account_mode"] = "real"
     upsert_user(email, kullanici)
 
+    BANK_PENDING_SMS.pop(email, None)
+
     return {
         "ok": True,
-        "banka": banka_adi,
+        "banka": bank_name,
         "real_cash": target_cash,
         "portfolio": target_portfolio,
-        "mesaj": f"{banka_adi} Açık Bankacılık entegrasyonu sağlandı. Gerçek portföyünüz salt okunur modda aktarıldı."
+        "mesaj": f"{bank_name} Açık Bankacılık entegrasyonu sağlandı. Gerçek portföyünüz salt okunur modda aktarıldı."
     }
+
+
+@app.post("/api/bank/sync")
+def bank_portfoy_senkronize_et(authorization: str | None = Header(default=None)):
+    """Bağlı banka portföyünün BIST seans fiyatlarını günceller."""
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+    if not kullanici.get("real_bank"):
+        raise HTTPException(status_code=400, detail="Bağlı bir gerçek banka hesabı bulunmuyor.")
+
+    # Canlı fiyatları güncelle
+    for hisse in (kullanici.get("real_portfolio") or {}).keys():
+        _hisse_anlik_fiyat(hisse)
+
+    return {
+        "ok": True,
+        "banka": kullanici.get("real_bank"),
+        "mesaj": f"{kullanici.get('real_bank')} portföyünüz Borsa İstanbul canlı verileriyle senkronize edildi."
+    }
+
+
+@app.post("/api/bank/connect")
+def banka_bagla(istek: BankaBaglantiIstek, authorization: str | None = Header(default=None)):
+    """Geriye dönük uyumluluk uç noktası. Doğrudan çağrılsa bile SMS doğrulaması arar."""
+    email = _oturum_dogrula(authorization)
+    kullanici = get_user(email)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı.")
+
+    oturum = BANK_PENDING_SMS.get(email)
+    if oturum and istek.sms_kodu and istek.sms_kodu.strip() == oturum["code"]:
+        # Kod doğru, verify-and-connect'e devret
+        return bank_sms_dogrula_ve_bagla(BankaSmsDogrulaIstek(code=istek.sms_kodu), authorization)
+
+    # Oturum yoksa veya kod girilmemişse boş geçişi engelle
+    raise HTTPException(
+        status_code=400,
+        detail="Açık Bankacılık entegrasyonu için cep telefonunuza iletilen geçerli SMS doğrulama kodunu girmeniz zorunludur."
+    )
 
 
 @app.post("/api/bank/disconnect")

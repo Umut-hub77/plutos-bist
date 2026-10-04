@@ -103,6 +103,18 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
     }
   };
 
+  const senkronizeEt = async () => {
+    try {
+      setYukleniyor(true);
+      await api('/api/bank/sync', { method: 'POST' });
+      await yukle();
+    } catch (e) {
+      alert(e.message || 'Senkronizasyon hatası');
+    } finally {
+      setYukleniyor(false);
+    }
+  };
+
   const isReal = veri?.account_mode === 'real';
   const bagliBanka = veri?.real_bank || '';
   const pozisyonlar = veri?.pozisyonlar || [];
@@ -207,6 +219,14 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
                   <span>{bagliBanka || 'Banka'} Web Şubesi ↗</span>
                 </a>
               )}
+              <button
+                className="arac-btn"
+                onClick={senkronizeEt}
+                style={{ fontSize: 12, padding: '7px 14px', borderColor: '#089981', color: '#089981', background: 'rgba(8,153,129,0.1)' }}
+                title="BIST seans fiyatlarını anlık yenile"
+              >
+                🔄 Canlı Seans Eşitle
+              </button>
               <button
                 className="arac-btn"
                 onClick={() => {

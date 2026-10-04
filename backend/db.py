@@ -69,6 +69,8 @@ class User(Base):
     real_bank = Column(String, nullable=False, default="")             # Bağlı banka adı
     real_cash = Column(String, nullable=False, default="0.0")          # Bankadaki yatırım nakdi
     account_mode = Column(String, nullable=False, default="demo")      # "demo" | "real"
+    phone = Column(String, nullable=True, default="")                  # Kullanıcı cep telefonu (+905xxxxxxxxx)
+    tckn = Column(String, nullable=True, default="")                   # TCKN veya müşteri no
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                          onupdate=lambda: datetime.now(timezone.utc))
@@ -93,6 +95,8 @@ def _migrate_add_missing_columns():
             "ALTER TABLE users ADD COLUMN real_bank VARCHAR DEFAULT ''",
             "ALTER TABLE users ADD COLUMN real_cash VARCHAR DEFAULT '0.0'",
             "ALTER TABLE users ADD COLUMN account_mode VARCHAR DEFAULT 'demo'",
+            "ALTER TABLE users ADD COLUMN phone VARCHAR DEFAULT ''",
+            "ALTER TABLE users ADD COLUMN tckn VARCHAR DEFAULT ''",
         ]:
             try:
                 conn.exec_driver_sql(ddl)
@@ -127,6 +131,8 @@ def _user_to_legacy_dict(user: User) -> dict:
         "real_bank": getattr(user, "real_bank", "") or "",
         "real_cash": float(user.real_cash) if getattr(user, "real_cash", None) not in (None, "") else 0.0,
         "account_mode": getattr(user, "account_mode", "demo") or "demo",
+        "phone": getattr(user, "phone", "") or "",
+        "tckn": getattr(user, "tckn", "") or "",
     }
 
 
@@ -175,6 +181,10 @@ def upsert_users_from_dict(db_dict: dict) -> None:
             user.real_bank = data.get("real_bank", "")
             user.real_cash = str(data.get("real_cash", 0.0))
             user.account_mode = data.get("account_mode", "demo")
+            if "phone" in data:
+                user.phone = data.get("phone") or ""
+            if "tckn" in data:
+                user.tckn = data.get("tckn") or ""
         session.commit()
     except SQLAlchemyError:
         session.rollback()
