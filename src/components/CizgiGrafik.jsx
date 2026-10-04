@@ -53,6 +53,14 @@ export default function CizgiGrafik({ seriler, referans = 100, d = 0, yukseklik 
     setHover(enYakin(tMin + ((oran - SOL) / (G - SOL - SAG)) * (tMax - tMin)));
   };
 
+  const dokunmaHareketi = (e) => {
+    if (!e.touches || !e.touches[0]) return;
+    const t = e.touches[0];
+    const r = e.currentTarget.getBoundingClientRect();
+    const oran = ((t.clientX - r.left) / r.width) * G;
+    setHover(enYakin(tMin + ((oran - SOL) / (G - SOL - SAG)) * (tMax - tMin)));
+  };
+
   const hoverDegerler = hover == null ? null : cizimler.map(c => {
     let b = null;
     for (const p of c.n) if (b === null || Math.abs(p.t - hover) < Math.abs(b.t - hover)) b = p;
@@ -62,13 +70,22 @@ export default function CizgiGrafik({ seriler, referans = 100, d = 0, yukseklik 
   }).filter(Boolean).sort((a, b) => b.p.v - a.p.v);
 
   return (
-    <div className="grafik-kutu">
+    <div className="grafik-kutu" style={{ touchAction: 'none' }}>
       {lejant && (
         <div className="grafik-lejant">
           {cizimler.map(c => <span key={c.hisse}><i style={{ background: c.renk }} />{c.hisse}</span>)}
         </div>
       )}
-      <svg viewBox={`0 0 ${G} ${Y}`} className="grafik-svg" onMouseMove={fareHareketi} onMouseLeave={() => setHover(null)}>
+      <svg
+        viewBox={`0 0 ${G} ${Y}`}
+        className="grafik-svg"
+        onMouseMove={fareHareketi}
+        onMouseLeave={() => setHover(null)}
+        onTouchStart={dokunmaHareketi}
+        onTouchMove={dokunmaHareketi}
+        onTouchEnd={() => setHover(null)}
+        style={{ touchAction: 'none' }}
+      >
         {yCizgileri.map((v, i) => (
           <g key={i}>
             <line x1={SOL} x2={G - SAG} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeWidth="1" />

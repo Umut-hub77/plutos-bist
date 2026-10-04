@@ -3227,3 +3227,61 @@ button.primary:hover {
   overflow-y: auto;
 }
 
+/* ==========================================================================
+   GRAFİK TİTREŞİM VE DOKUNMATİK KAYDIRMA KİLİTLERİ (SMOOTH TOUCH & ZOOM)
+   ========================================================================== */
+.plotly-grafik-kapsayici {
+  width: 100%;
+  position: relative;
+  touch-action: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.js-plotly-plot,
+.js-plotly-plot .plotly,
+.js-plotly-plot .plot-container {
+  touch-action: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+.js-plotly-plot .draglayer {
+  touch-action: none !important;
+  cursor: grab !important;
+}
+
+.js-plotly-plot .draglayer:active {
+  cursor: grabbing !important;
+}
+
+.js-plotly-plot .nsewdrag,
+.js-plotly-plot .nwdrag,
+.js-plotly-plot .nedrag,
+.js-plotly-plot .swdrag,
+.js-plotly-plot .sedrag,
+.js-plotly-plot .ewdrag,
+.js-plotly-plot .nsdrag {
+  touch-action: none !important;
+  cursor: grab !important;
+}
+
+.js-plotly-plot .nsewdrag:active,
+.js-plotly-plot .draglayer:active {
+  cursor: grabbing !important;
+}
+
+/* Hover ve Spikeline araçlarının mikro-layout tetikleyip titremesini engelle */
+.js-plotly-plot .hoverlayer,
+.js-plotly-plot .spikelayer {
+  pointer-events: none !important;
+}
+
+.js-plotly-plot .hovertext {
+  pointer-events: none !important;
+}
+
+

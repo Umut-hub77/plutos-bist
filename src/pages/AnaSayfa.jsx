@@ -91,6 +91,8 @@ function bist100FigurUret(noktalar = [], yukseklik = 195) {
     margin: { l: 20, r: 60, t: 10, b: 28 },
     paper_bgcolor: '#131722',
     plot_bgcolor: '#131722',
+    dragmode: 'pan',
+    uirevision: 'bist100_intraday',
     xaxis: {
       showgrid: true,
       gridcolor: 'rgba(42, 46, 57, 0.45)',
