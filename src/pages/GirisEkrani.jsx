@@ -170,6 +170,9 @@ export default function GirisEkrani({ onGiris }) {
       }
 
       setBilgiMesaji(veri.message || `${gEmail} adresine 6 haneli doğrulama kodu gönderildi.`);
+      if (veri.dev_kod) {
+        setKod(veri.dev_kod);
+      }
       setKalanSure(600);
       setDogrulamaAsamasi(true);
     } catch {
@@ -236,6 +239,9 @@ export default function GirisEkrani({ onGiris }) {
         return;
       }
       setBilgiMesaji(veri.message || 'Sıfırlama kodu gönderildi.');
+      if (veri.dev_kod) {
+        setKod(veri.dev_kod);
+      }
       setKalanSure(600);
       setSifremiUnuttumAsama(2);
     } catch {

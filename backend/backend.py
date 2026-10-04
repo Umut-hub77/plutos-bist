@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from db import get_user, upsert_user, user_exists, init_db, User, SessionLocal
 from auth_utils import verify_password, hash_password, needs_rehash
 from email_service import send_verification_email, is_smtp_configured
-from sms_service import formatla_telefon, dogrula_kimlik_veya_musteri_no, send_bank_sms_otp
+from sms_service import formatla_telefon, dogrula_kimlik_veya_musteri_no, send_bank_sms_otp, guvenli_konsola_yazdir
 from bist_list import BIST_TUM_LIST, BIST_SEKTORLER
 
 import yfinance as yf
@@ -321,11 +321,23 @@ def auth_send_verification(istek: DogrulamaKoduGonderIstek):
     tam_ad = f"{istek.ad.strip()} {istek.soyad.strip()}"
     gonderildi, aciklama = send_verification_email(email, code, tam_ad)
 
+    banner = (
+        "\n" + "=" * 65 + "\n"
+        f"[PLUTOS E-POSTA DOĞRULAMA KODU]\n"
+        f"Kullanıcı   : {tam_ad} ({email})\n"
+        f"DOĞRULAMA   : >>> {code} <<<\n"
+        f"Süre        : 10 Dakika\n"
+        f"Durum       : {'E-posta İletildi' if gonderildi else 'Simülasyon / Dev Modu'}\n"
+        + "=" * 65 + "\n"
+    )
+    guvenli_konsola_yazdir(banner)
+
     resp = {
         "ok": True,
         "email": email,
-        "message": f"6 haneli doğrulama kodu {email} adresine gönderildi.",
+        "message": f"6 haneli doğrulama kodu {email} adresine gönderildi." if gonderildi else f"Doğrulama kodunuz oluşturuldu: {code}",
         "smtp_aktif": is_smtp_configured(),
+        "dev_kod": code,
     }
     return resp
 
@@ -422,12 +434,24 @@ def sifremi_unuttum_kod_gonder(istek: SifremiUnuttumKodIstek):
     }
 
     tam_ad = f"{kullanici.get('ad', '')} {kullanici.get('soyad', '')}".strip() or "Trader"
-    send_verification_email(email, code, tam_ad)
+    gonderildi, _ = send_verification_email(email, code, tam_ad)
+
+    banner = (
+        "\n" + "=" * 65 + "\n"
+        f"[PLUTOS ŞİFRE SIFIRLAMA KODU]\n"
+        f"Kullanıcı   : {tam_ad} ({email})\n"
+        f"DOĞRULAMA   : >>> {code} <<<\n"
+        f"Süre        : 10 Dakika\n"
+        f"Durum       : {'E-posta İletildi' if gonderildi else 'Simülasyon / Dev Modu'}\n"
+        + "=" * 65 + "\n"
+    )
+    guvenli_konsola_yazdir(banner)
 
     return {
         "ok": True,
         "email": email,
-        "message": f"6 haneli şifre sıfırlama kodu {email} adresine iletildi."
+        "message": f"6 haneli şifre sıfırlama kodu {email} adresine iletildi." if gonderildi else f"Şifre sıfırlama kodunuz oluşturuldu: {code}",
+        "dev_kod": code,
     }
 
 
@@ -1684,7 +1708,7 @@ def bank_sms_kodu_gonder(istek: BankaSmsGonderIstek, authorization: str | None =
     upsert_user(email, kullanici)
 
     # 6. Gerçek SMS & Güvenlik Bildirimi İletimi
-    send_bank_sms_otp(
+    sonuc = send_bank_sms_otp(
         phone_international=uluslararasi_tel,
         code=code,
         bank_name=secilen["ad"],
@@ -1692,12 +1716,27 @@ def bank_sms_kodu_gonder(istek: BankaSmsGonderIstek, authorization: str | None =
         masked_phone=maskeli_tel,
     )
 
+    sms_ok = bool(sonuc.get("sms_gonderildi"))
+    email_ok = bool(sonuc.get("email_gonderildi"))
+
+    if sms_ok and email_ok:
+        mesaj = f"{secilen['ad']} güvenlik kodunuz gerçek SMS ile {maskeli_tel} hattınıza ve e-posta adresinize iletildi."
+    elif sms_ok:
+        mesaj = f"{secilen['ad']} güvenlik onay SMS'i {maskeli_tel} numaralı telefonunuza başarıyla iletildi."
+    elif email_ok:
+        mesaj = f"{secilen['ad']} güvenlik kodunuz {email} e-posta adresinize iletildi."
+    else:
+        mesaj = f"{secilen['ad']} 6 haneli güvenlik onay kodunuz: {code}"
+
     return {
         "ok": True,
         "banka": secilen["ad"],
         "telefon_maskeli": maskeli_tel,
         "sure_saniye": 180,
-        "mesaj": f"{secilen['ad']} güvenlik onay SMS'i {maskeli_tel} numaralı telefonunuza iletildi.",
+        "sms_gonderildi": sms_ok,
+        "email_gonderildi": email_ok,
+        "dev_sms_kod": code,
+        "mesaj": mesaj,
     }
 
 
@@ -1771,6 +1810,8 @@ def bank_sms_dogrula_ve_bagla(istek: BankaSmsDogrulaIstek, authorization: str | 
     return {
         "ok": True,
         "banka": bank_name,
+        "account_mode": "real",
+        "read_only": True,
         "real_cash": target_cash,
         "portfolio": target_portfolio,
         "mesaj": f"{bank_name} Açık Bankacılık entegrasyonu sağlandı. Gerçek portföyünüz salt okunur modda aktarıldı."

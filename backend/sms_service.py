@@ -14,10 +14,22 @@ import urllib.request
 import urllib.parse
 import base64
 import logging
+from pathlib import Path
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import smtplib
+
+try:
+    from dotenv import load_dotenv
+    for p in [Path(__file__).resolve().parent / ".env", Path.cwd() / "backend" / ".env", Path.cwd() / ".env"]:
+        if p.exists():
+            load_dotenv(p)
+            break
+    else:
+        load_dotenv()
+except Exception:
+    pass
 
 from email_service import get_smtp_config, is_smtp_configured
 
@@ -168,6 +180,47 @@ def _netgsm_sms_gonder(telefon: str, mesaj: str) -> tuple[bool, str]:
         return False, str(e)
 
 
+def _iletimerkezi_sms_gonder(telefon: str, mesaj: str) -> tuple[bool, str]:
+    """İletiMerkezi XML API üzerinden SMS gönderimi."""
+    key = os.environ.get("ILETIMERKEZI_KEY", "").strip()
+    hash_val = os.environ.get("ILETIMERKEZI_HASH", "").strip()
+    sender = os.environ.get("ILETIMERKEZI_SENDER", "").strip() or "PLUTOS"
+
+    if not (key and hash_val):
+        return False, "İletiMerkezi ayarları tanımlanmamış."
+
+    alici = telefon.replace("+", "").replace(" ", "")
+    xml_data = f"""<request>
+        <authentication>
+            <key>{key}</key>
+            <hash>{hash_val}</hash>
+        </authentication>
+        <order>
+            <sender>{sender}</sender>
+            <sendDateTime></sendDateTime>
+            <message>
+                <text><![CDATA[{mesaj}]]></text>
+                <receivers>
+                    <number>{alici}</number>
+                </receivers>
+            </message>
+        </order>
+    </request>"""
+    try:
+        req = urllib.request.Request(
+            "https://api.iletimerkezi.com/v1/send-sms",
+            data=xml_data.encode("utf-8"),
+            headers={"Content-Type": "text/xml; charset=utf-8"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            govde = resp.read().decode("utf-8")
+            if "<status><code>200</code>" in govde:
+                return True, "İletiMerkezi SMS başarıyla gönderildi."
+            return False, f"İletiMerkezi hata: {govde}"
+    except Exception as e:
+        return False, str(e)
+
+
 def send_bank_otp_email(to_email: str, code: str, bank_name: str, masked_phone: str) -> tuple[bool, str]:
     """
     Kullanıcının e-posta adresine banka doğrulama SMS bildirimini iletir.
@@ -291,6 +344,22 @@ Plutos Institutional Workstation
         return False, str(e)
 
 
+def guvenli_konsola_yazdir(metin: str):
+    """Windows cp1254/ANSI konsollarında Unicode/Emoji çökmesini engeller."""
+    try:
+        print(metin, flush=True)
+    except UnicodeEncodeError:
+        try:
+            print(metin.encode("cp1254", errors="replace").decode("cp1254"), flush=True)
+        except Exception:
+            try:
+                print(metin.encode("ascii", errors="replace").decode("ascii"), flush=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def send_bank_sms_otp(
     phone_international: str,
     code: str,
@@ -300,29 +369,65 @@ def send_bank_sms_otp(
 ) -> dict:
     """
     SMS ve Yedek Güvenlik Kanalları üzerinden tek kullanımlık 6 haneli kodu iletir.
+    Öncelik sırası:
+      1. Netgsm (Türkiye GSM hatları)
+      2. İletiMerkezi (Türkiye GSM hatları)
+      3. Twilio (Uluslararası / Türkiye GSM hatları)
+      4. SMTP E-posta Bildirimi
+      5. Geliştirici / Konsol / Simüle SMS Bildirimi
     """
     mesaj = f"Plutos Açık Bankacılık: {bank_name} hesap bağlantısı için güvenlik kodunuz: {code}. Bu kod 3 dakika geçerlidir."
 
     sms_basarili = False
     sms_aciklama = ""
 
-    # 1. Twilio SMS Denemesi
-    if os.environ.get("TWILIO_ACCOUNT_SID") and (os.environ.get("TWILIO_SMS_FROM") or os.environ.get("TWILIO_FROM")):
-        sms_basarili, sms_aciklama = _twilio_sms_gonder(phone_international, mesaj)
-
-    # 2. Netgsm Denemesi
-    if not sms_basarili and os.environ.get("NETGSM_USERCODE"):
+    # 1. Netgsm SMS Denemesi (Türkiye için en hızlı ve yaygın)
+    if os.environ.get("NETGSM_USERCODE"):
         sms_basarili, sms_aciklama = _netgsm_sms_gonder(phone_international, mesaj)
 
-    # 3. Kullanıcı E-posta Bildirim Kanali
+    # 2. İletiMerkezi SMS Denemesi
+    if not sms_basarili and os.environ.get("ILETIMERKEZI_KEY"):
+        sms_basarili, sms_aciklama = _iletimerkezi_sms_gonder(phone_international, mesaj)
+
+    # 3. Twilio SMS Denemesi
+    if not sms_basarili and os.environ.get("TWILIO_ACCOUNT_SID") and (os.environ.get("TWILIO_SMS_FROM") or os.environ.get("TWILIO_FROM")):
+        sms_basarili, sms_aciklama = _twilio_sms_gonder(phone_international, mesaj)
+
+    # 4. Kullanıcı E-posta Bildirim Kanalı
     email_basarili = False
     if user_email:
         email_basarili, _ = send_bank_otp_email(user_email, code, bank_name, masked_phone)
 
+    # Terminal Konsoluna ve Log Dosyasına Büyük Vurgulu Yazdır
+    durumlar = []
+    if sms_basarili:
+        durumlar.append(f"SMS: GSM Şebekesine İletildi ({sms_aciklama})")
+    else:
+        durumlar.append("SMS: .env içinde SMS API bilgisi bulunamadı / Simülasyon modunda")
+    if email_basarili:
+        durumlar.append(f"E-Posta: {user_email} adresine iletildi")
+    elif user_email:
+        durumlar.append("E-Posta: SMTP yapılandırılmamış")
+
+    banner = (
+        "\n" + "=" * 68 + "\n"
+        f"[PLUTOS AÇIK BANKACILIK DOĞRULAMA KODU (SMS OTP)]\n"
+        f"Banka       : {bank_name}\n"
+        f"Telefon     : {phone_international} ({masked_phone})\n"
+        f"ONAY KODU   : >>> {code} <<<\n"
+        f"Geçerlilik  : 3 Dakika (180 saniye)\n"
+        f"İletim      : {' | '.join(durumlar)}\n"
+        + "=" * 68 + "\n"
+    )
+    guvenli_konsola_yazdir(banner)
+    logger.info(banner)
+
     return {
         "ok": True,
+        "code": code,
         "sms_gonderildi": sms_basarili,
+        "sms_aciklama": sms_aciklama,
         "email_gonderildi": email_basarili,
         "telefon_maskeli": masked_phone,
-        "mesaj": f"6 haneli doğrulama SMS'i {masked_phone} numaralı hatta gönderildi.",
+        "mesaj": f"6 haneli doğrulama kodu {masked_phone} numaralı hatta gönderildi.",
     }

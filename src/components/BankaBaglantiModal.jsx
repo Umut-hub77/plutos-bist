@@ -28,6 +28,11 @@ export default function BankaBaglantiModal({ acik, kapat, api, bagliBanka, onBag
   const [smsYukleniyor, setSmsYukleniyor] = useState(false);
   const [baglanYukleniyor, setBaglanYukleniyor] = useState(false);
   const [beklemeAdimi, setBeklemeAdimi] = useState(1);
+  const [gelenSmsKodu, setGelenSmsKodu] = useState('');
+  const [gercekSmsGonderildi, setGercekSmsGonderildi] = useState(false);
+  const [gercekEmailGonderildi, setGercekEmailGonderildi] = useState(false);
+  const [smsBildirimGoster, setSmsBildirimGoster] = useState(false);
+  const [kopyalandi, setKopyalandi] = useState(false);
 
   const timerRef = useRef(null);
   const smsInputRef = useRef(null);
@@ -41,6 +46,11 @@ export default function BankaBaglantiModal({ acik, kapat, api, bagliBanka, onBag
       setSecilenBanka(null);
       setSmsGonderildi(false);
       setSmsKodu('');
+      setGelenSmsKodu('');
+      setGercekSmsGonderildi(false);
+      setGercekEmailGonderildi(false);
+      setSmsBildirimGoster(false);
+      setKopyalandi(false);
       setKalanSure(0);
 
       api('/api/bank/list')
@@ -89,6 +99,11 @@ export default function BankaBaglantiModal({ acik, kapat, api, bagliBanka, onBag
     setBilgiMesaji('');
     setSmsGonderildi(false);
     setSmsKodu('');
+    setGelenSmsKodu('');
+    setGercekSmsGonderildi(false);
+    setGercekEmailGonderildi(false);
+    setSmsBildirimGoster(false);
+    setKopyalandi(false);
     setKalanSure(0);
   };
 
@@ -143,7 +158,15 @@ export default function BankaBaglantiModal({ acik, kapat, api, bagliBanka, onBag
       setTelefonMaskeli(res.telefon_maskeli || telefon);
       setKalanSure(res.sure_saniye || 180);
       setSmsGonderildi(true);
-      setBilgiMesaji(res.mesaj || '6 haneli doğrulama SMS kodu telefonunuza iletildi.');
+      setGercekSmsGonderildi(Boolean(res.sms_gonderildi));
+      setGercekEmailGonderildi(Boolean(res.email_gonderildi));
+
+      if (res.dev_sms_kod) {
+        setGelenSmsKodu(res.dev_sms_kod);
+        setSmsBildirimGoster(true);
+      }
+
+      setBilgiMesaji(res.mesaj || '6 haneli doğrulama SMS kodu iletildi.');
       
       // SMS kutucuğuna otomatik odaklan
       setTimeout(() => {
@@ -495,6 +518,143 @@ export default function BankaBaglantiModal({ acik, kapat, api, bagliBanka, onBag
                 </div>
               )}
 
+              {/* GELEN BANKA SMS BİLDİRİM BANNERI (GERÇEK ZAMANLI İLETİM & TEST KOLAYLIĞI) */}
+              {smsBildirimGoster && gelenSmsKodu && (
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(24, 29, 41, 0.98) 0%, rgba(15, 18, 26, 0.98) 100%)',
+                    border: '1.5px solid #2962FF',
+                    borderRadius: 12,
+                    padding: '14px 16px',
+                    marginBottom: 16,
+                    boxShadow: '0 8px 30px rgba(41, 98, 255, 0.25)',
+                    animation: 'fadeIn 0.25s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 20 }}>💬</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#FFFFFF' }}>GELEN SMS</span>
+                        <span style={{ color: '#64748B', fontSize: 11 }}>•</span>
+                        <span style={{ color: secilenBanka.renk || '#2962FF', fontWeight: 700, fontSize: 12.5 }}>
+                          {secilenBanka.ad}
+                        </span>
+                        <span style={{ color: '#64748B', fontSize: 11 }}>• Az önce</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSmsBildirimGoster(false)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#64748B',
+                        fontSize: 16,
+                        cursor: 'pointer',
+                        padding: '2px 6px',
+                      }}
+                      title="Bildirimi Gizle"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#0E1118',
+                      border: '1px solid #2A2E39',
+                      borderRadius: 8,
+                      padding: '10px 14px',
+                      fontSize: 12.5,
+                      color: '#E2E8F0',
+                      lineHeight: 1.5,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div style={{ marginBottom: 4 }}>
+                      "Sayın Yatırımcı, Açık Bankacılık hesap bağlantınız için 6 haneli güvenlik onay kodunuz:
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                      <span
+                        style={{
+                          fontFamily: 'JetBrains Mono, monospace',
+                          fontWeight: 800,
+                          fontSize: 22,
+                          letterSpacing: 4,
+                          color: '#089981',
+                          background: 'rgba(8, 153, 129, 0.15)',
+                          border: '1px solid rgba(8, 153, 129, 0.3)',
+                          padding: '3px 12px',
+                          borderRadius: 6,
+                        }}
+                      >
+                        {gelenSmsKodu}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#94A3B8' }}>⏱️ 3 dakika geçerlidir.</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 11, color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {gercekSmsGonderildi ? (
+                        <span style={{ color: '#089981', fontWeight: 600 }}>📡 Gerçek GSM SMS iletildi</span>
+                      ) : (
+                        <span style={{ color: '#2962FF', fontWeight: 600 }}>📱 Plutos Güvenli Doğrulama Bildirimi</span>
+                      )}
+                      {gercekEmailGonderildi && (
+                        <span style={{ color: '#D7FF4E' }}>• 📧 E-postaya da gönderildi</span>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(gelenSmsKodu);
+                          setKopyalandi(true);
+                          setTimeout(() => setKopyalandi(false), 2000);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid #2A2E39',
+                          borderRadius: 6,
+                          color: '#D1D4DC',
+                          fontSize: 11.5,
+                          padding: '6px 12px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {kopyalandi ? '✓ Kopyalandı' : '📋 Kopyala'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSmsKodu(gelenSmsKodu);
+                          smsInputRef.current?.focus();
+                        }}
+                        style={{
+                          background: '#089981',
+                          border: 'none',
+                          borderRadius: 6,
+                          color: '#FFFFFF',
+                          fontWeight: 700,
+                          fontSize: 12,
+                          padding: '6px 14px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        <span>⚡</span>
+                        <span>Kodu Otomatik Doldur</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <form onSubmit={handleSmsDogrulaVeBagla} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* T.C. Kimlik / Müşteri No */}
                 <div>
@@ -678,6 +838,57 @@ export default function BankaBaglantiModal({ acik, kapat, api, bagliBanka, onBag
                     <div style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8', marginTop: 6 }}>
                       {telefonMaskeli} hattınıza gelen 6 haneli kodu buraya girerek aşağıdaki butondan doğrulayınız.
                     </div>
+
+                    {gelenSmsKodu && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          background: 'rgba(8, 153, 129, 0.1)',
+                          border: '1px dashed rgba(8, 153, 129, 0.4)',
+                          borderRadius: 8,
+                          padding: '8px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 14 }}>🔑</span>
+                          <span style={{ fontSize: 11.5, color: '#94A3B8' }}>Gelen Kod:</span>
+                          <span
+                            style={{
+                              fontFamily: 'JetBrains Mono, monospace',
+                              fontSize: 15,
+                              fontWeight: 800,
+                              color: '#089981',
+                              letterSpacing: 2,
+                            }}
+                          >
+                            {gelenSmsKodu}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSmsKodu(gelenSmsKodu);
+                            smsInputRef.current?.focus();
+                          }}
+                          style={{
+                            background: '#089981',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: '#FFFFFF',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: '4px 10px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ⚡ Kodu Doldur
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -17,8 +17,20 @@ Ortam değişkenleri (.env):
 import os
 import smtplib
 import logging
+from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+try:
+    from dotenv import load_dotenv
+    for p in [Path(__file__).resolve().parent / ".env", Path.cwd() / "backend" / ".env", Path.cwd() / ".env"]:
+        if p.exists():
+            load_dotenv(p)
+            break
+    else:
+        load_dotenv()
+except Exception:
+    pass
 
 logger = logging.getLogger("plutos.email")
 
