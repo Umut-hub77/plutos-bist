@@ -86,27 +86,28 @@ export function satirAraliklari(yukseklikler, aralik = 0.03) {
   });
 }
 
-// Alt panel eksenlerini (x2,y2,...) üretir; hepsi ilk x eksenine bağlıdır (shared_xaxes=True).
+// Alt panel eksenlerini (y, y2, y3...) üretir; tüm paneller tek bir ortak X eksenini (xaxis: 'x') paylaşır.
+// Böylece fare ile yakınlaştırma/uzaklaştırma ve sürükleme sırasında eksenler arası çatışma veya geri sıçrama yaşanmaz.
 export function altPanelEksenleri(alanlar, sonEtiketAyari = {}, yan = 'right') {
   const l = {};
+  const sonY = alanlar.length <= 1 ? 'y' : 'y' + String(alanlar.length);
   alanlar.forEach((d, i) => {
     const s = i === 0 ? '' : String(i + 1);
     l['yaxis' + s] = {
       domain: d,
-      anchor: 'x' + s,
+      anchor: 'x',
       side: yan,
       fixedrange: true, // Dikdörtgen kutu seçimini engeller, zaman eksenini zoomlatır
       tickfont: { size: 10, color: TEMA.muted, family: "'JetBrains Mono', monospace" },
     };
-    l['xaxis' + s] = {
-      domain: [0, 1],
-      anchor: 'y' + s,
-      ...(i === 0 ? {} : { matches: 'x' }),
-      showticklabels: i === alanlar.length - 1,
-      tickfont: { size: 10, color: TEMA.muted, family: "'JetBrains Mono', monospace" },
-      ...(i === alanlar.length - 1 ? sonEtiketAyari : {}),
-    };
   });
+  l.xaxis = {
+    domain: [0, 1],
+    anchor: sonY,
+    showticklabels: true,
+    tickfont: { size: 10, color: TEMA.muted, family: "'JetBrains Mono', monospace" },
+    ...sonEtiketAyari,
+  };
   return l;
 }
 

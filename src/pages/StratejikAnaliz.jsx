@@ -74,7 +74,7 @@ function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritm
       type: 'scatter', mode: 'lines', x, y, name: ad,
       line: { color, width, ...(extra.dash ? { dash: extra.dash } : {}) },
       ...(extra.fill ? { fill: extra.fill, fillcolor: extra.fillcolor } : {}),
-      xaxis: 'x' + sonek(k), yaxis: 'y' + sonek(k),
+      xaxis: 'x', yaxis: 'y' + sonek(k),
       hoverinfo: 'name+y+x',
     });
   };
@@ -134,7 +134,7 @@ function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritm
   // Destek / Direnç Pivot Çizgileri
   const shapes = [];
   const yatay = (k, y, color, dash = 'dash', width = 1) => shapes.push({
-    type: 'line', xref: `x${sonek(k)} domain`, x0: 0, x1: 1, yref: 'y' + sonek(k), y0: y, y1: y,
+    type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y' + sonek(k), y0: y, y1: y,
     line: { color, width, dash },
   });
 
@@ -162,7 +162,7 @@ function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritm
         data.push({
           type: 'bar', x, y: G.macdh, name: 'MACD Hist',
           marker: { color: G.macdh.map(h => (h >= 0 ? 'rgba(8, 153, 129, 0.85)' : 'rgba(242, 54, 69, 0.85)')) },
-          xaxis: 'x' + sonek(k), yaxis: 'y' + sonek(k),
+          xaxis: 'x', yaxis: 'y' + sonek(k),
         });
       }
     } else if (ad === 'Stochastic' && G.stochk) {
@@ -185,15 +185,18 @@ function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritm
 
   // Eksenler ve Filigran
   const eksenler = altPanelEksenleri(alanlar, {}, 'right');
-  const son60 = x[Math.max(0, x.length - 80)], sonBar = x[x.length - 1];
+  const basIdx = Math.max(0, x.length - 80);
+  const sonIdx = Math.max(0, x.length - 1);
+  const son60 = x[basIdx], sonBar = x[sonIdx];
 
   eksenler.xaxis = {
     ...eksenler.xaxis,
-    range: [son60, sonBar],
+    ...(haftaSonuKaldir
+      ? { type: 'category', nticks: 10, range: [basIdx, sonIdx] }
+      : { range: [son60, sonBar] }),
     rangeslider: { visible: false },
     showgrid: true,
     gridcolor: 'rgba(42, 46, 57, 0.45)',
-    ...(haftaSonuKaldir ? { rangebreaks: BIST_RANGEBREAKS } : {}),
   };
 
   eksenler.yaxis = {
@@ -223,7 +226,7 @@ function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritm
     annotations,
     dragmode: 'pan',
     hovermode: 'x unified',
-    uirevision: 'kurumsal_bist_v1',
+    uirevision: `bist_${v.hisse}_${v.interval}_${haftaSonuKaldir}`,
     height: Math.max(560, 500 + 130 * nAlt),
     margin: { l: 20, r: 65, t: 36, b: 24 },
     legend: {
@@ -249,17 +252,17 @@ function fraktalFigurUret(v) {
     },
     { type: 'scatter', x, y: v.grafik.ema20, name: 'EMA 20', line: { color: '#2962FF', width: 1.6 }, xaxis: 'x', yaxis: 'y' },
     { type: 'scatter', x, y: v.grafik.ema50, name: 'EMA 50', line: { color: '#FF9800', width: 1.6 }, xaxis: 'x', yaxis: 'y' },
-    { type: 'scatter', x, y: v.grafik.macd, name: 'MACD', line: { color: '#2962FF' }, xaxis: 'x2', yaxis: 'y2' },
-    { type: 'scatter', x, y: v.grafik.sinyal, name: 'Sinyal', line: { color: '#FF9800' }, xaxis: 'x2', yaxis: 'y2' },
+    { type: 'scatter', x, y: v.grafik.macd, name: 'MACD', line: { color: '#2962FF' }, xaxis: 'x', yaxis: 'y2' },
+    { type: 'scatter', x, y: v.grafik.sinyal, name: 'Sinyal', line: { color: '#FF9800' }, xaxis: 'x', yaxis: 'y2' },
     {
       type: 'bar', x, y: v.grafik.hist, name: 'MACD Hist',
       marker: { color: v.grafik.hist.map(h => (h >= 0 ? '#089981' : '#F23645')) },
-      xaxis: 'x2', yaxis: 'y2',
+      xaxis: 'x', yaxis: 'y2',
     },
     {
       type: 'bar', x, y: v.grafik.hacim, name: 'Hacim',
       marker: { color: 'rgba(41, 98, 255, 0.35)' },
-      xaxis: 'x3', yaxis: 'y3',
+      xaxis: 'x', yaxis: 'y3',
     },
   ];
 
@@ -338,11 +341,13 @@ export default function StratejikAnaliz({ api }) {
       setHata('');
       const r = await api(`/api/technical/${hisse}?interval=${interval}&period=${period}&formul=${encodeURIComponent(formulOnayli)}`);
       setTeknikVeri(r);
-      if (r?.istatistik?.son_fiyat && !emirFiyat) {
-        setEmirFiyat(r.istatistik.son_fiyat);
+      if (r?.istatistik?.son_fiyat) {
+        setEmirFiyat(prev => prev || r.istatistik.son_fiyat);
       }
+      return r;
     } catch (e) {
       setHata(e.message || 'Teknik veri alınamadı.');
+      return null;
     }
   }, [api, hisse, interval, period, formulOnayli]);
 
@@ -376,7 +381,7 @@ export default function StratejikAnaliz({ api }) {
   }, [hisse]);
 
   // 3. Derinlik, AKD, İşlem Akışı ve Portföy Bakiye Yükleme
-  const masaVerileriYukle = useCallback(async () => {
+  const masaVerileriYukle = useCallback(async (guncelFiyat) => {
     try {
       const [d, a, s, p] = await Promise.all([
         api(`/api/depth/${hisse}`).catch(() => null),
@@ -391,7 +396,7 @@ export default function StratejikAnaliz({ api }) {
         setSanalBakiye(p.virtual_cash ?? 100000);
         const poz = p.portfolio?.[hisse] || p.pozisyonlar?.find(x => x.hisse === hisse);
         if (poz) {
-          const lp = teknikVeri?.istatistik?.son_fiyat || poz.maliyet;
+          const lp = guncelFiyat || poz.guncel_fiyat || poz.maliyet;
           const kz = (lp - poz.maliyet) * poz.lot;
           setMevcutPozisyon({
             lot: poz.lot,
@@ -406,13 +411,16 @@ export default function StratejikAnaliz({ api }) {
     } catch {
       /* sessiz */
     }
-  }, [api, hisse, teknikVeri]);
+  }, [api, hisse]);
 
   // Hisse / Periyot Değişimi
   useEffect(() => {
     let iptal = false;
     setBekle(true);
-    Promise.all([teknikYukle(), fraktalYukle(), masaVerileriYukle()]).finally(() => {
+    Promise.all([
+      teknikYukle().then(r => masaVerileriYukle(r?.istatistik?.son_fiyat)),
+      fraktalYukle(),
+    ]).finally(() => {
       if (!iptal) setBekle(false);
     });
     return () => { iptal = true; };
