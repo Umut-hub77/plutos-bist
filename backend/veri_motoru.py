@@ -66,10 +66,18 @@ def _tv_baglan():
 
 
 def _yfinance_dogrudan(symbol, period, interval):
-    """Yedek kanal (Yahoo) — data_engine.get_data_yfinance_direct ile aynı."""
+    """Yedek kanal (Yahoo) — hissenin halka arzından itibaren tüm geçmişini ('max') destekler."""
     try:
         clean = symbol.split('.')[0].upper()
-        df = yf.download(f"{clean}.IS", period=period, interval=interval, progress=False)
+        yf_period = period
+        if interval in ('5m', '15m', '30m') and period not in ('1d', '5d', '1mo', '60d'):
+            yf_period = '60d'
+        elif interval in ('60m', '1h') and period in ('3y', '5y', '10y', 'max'):
+            yf_period = '2y'
+        elif interval in ('1d', '5d', '1wk', '1mo', '3mo') and period in ('3y', 'max'):
+            yf_period = 'max'
+
+        df = yf.download(f"{clean}.IS", period=yf_period, interval=interval, progress=False)
         if df is not None and not df.empty:
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.droplevel(1)
@@ -79,23 +87,30 @@ def _yfinance_dogrudan(symbol, period, interval):
     return pd.DataFrame()
 
 
-def gecmis_veri(symbol, period='1y', interval='1d'):
+def gecmis_veri(symbol, period='max', interval='1d'):
     """data_engine.get_historical_data karşılığı (TTL 120 sn). Başarısız sonuç önbelleğe alınmaz."""
     anahtar = ('hist', symbol.upper(), period, interval)
     hit = _onbellekten(anahtar, 120)
     if hit is not None:
         return hit.copy()
 
+    # Tam geçmiş ('max', '10y', '5y', '3y') istendiğinde doğrudan Yahoo Finance üzerinden halka arzdan itibaren tüm veriyi çek
+    if period in ('max', '10y', '5y', '3y') and interval in ('1d', '5d', '1wk', '1mo'):
+        df_yf = _yfinance_dogrudan(symbol, 'max' if period == 'max' else period, interval)
+        if df_yf is not None and not df_yf.empty:
+            _onbellege(anahtar, df_yf)
+            return df_yf.copy()
+
     clean = symbol.split('.')[0].upper()
     tv = _tv_baglan()
     if tv is not None:
         try:
-            n_bars = 300
+            n_bars = 5000
             if interval == '1d':
-                n_bars = {'5y': 1300, '1y': 260, '6mo': 130}.get(period, 300)
-            elif interval == '1h':
-                n_bars = 500
-            itvl = Interval.in_1_hour if interval == '1h' else Interval.in_daily
+                n_bars = {'max': 5000, '10y': 2600, '5y': 1300, '3y': 780, '1y': 260, '6mo': 130}.get(period, 5000)
+            elif interval in ('1h', '60m'):
+                n_bars = 2000
+            itvl = Interval.in_1_hour if interval in ('1h', '60m') else Interval.in_daily
             for _ in range(2):
                 df = tv.get_hist(symbol=clean, exchange='BIST', interval=itvl, n_bars=n_bars)
                 if df is None:

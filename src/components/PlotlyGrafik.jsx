@@ -31,6 +31,87 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
   const touchDistanceInitial = useRef(null);
   const initialPinchLinearRange = useRef(null);
 
+  // Grafikteki tüm veri izlerinden (traces) gerçek başlangıç (halka arz / ilk bar) ve bitiş sınırlarını hesapla
+  const getDataLinearBounds = useCallback((el, ax) => {
+    if (!el || !ax || typeof ax.r2l !== 'function') return null;
+
+    if (ax.type === 'category') {
+      let maxLen = Array.isArray(ax._categories) ? ax._categories.length : 0;
+      if (Array.isArray(el.data)) {
+        for (const trace of el.data) {
+          if (Array.isArray(trace?.x) && trace.x.length > maxLen) {
+            maxLen = trace.x.length;
+          }
+        }
+      }
+      if (maxLen > 0) {
+        return [-0.5, maxLen - 0.5];
+      }
+      return null;
+    }
+
+    let minB = Infinity;
+    let maxB = -Infinity;
+    if (Array.isArray(el.data)) {
+      for (const trace of el.data) {
+        const xs = trace?.x;
+        if (!Array.isArray(xs) || xs.length === 0) continue;
+        let firstVal = null;
+        let lastVal = null;
+        for (let i = 0; i < xs.length; i++) {
+          if (xs[i] !== null && xs[i] !== undefined) {
+            firstVal = xs[i];
+            break;
+          }
+        }
+        for (let i = xs.length - 1; i >= 0; i--) {
+          if (xs[i] !== null && xs[i] !== undefined) {
+            lastVal = xs[i];
+            break;
+          }
+        }
+        if (firstVal !== null && lastVal !== null) {
+          const lFirst = ax.r2l(firstVal);
+          const lLast = ax.r2l(lastVal);
+          if (isFinite(lFirst) && isFinite(lLast)) {
+            minB = Math.min(minB, lFirst, lLast);
+            maxB = Math.max(maxB, lFirst, lLast);
+          }
+        }
+      }
+    }
+
+    if (isFinite(minB) && isFinite(maxB) && maxB > minB) {
+      return [minB, maxB];
+    }
+    return null;
+  }, []);
+
+  // Görünüm aralığını veri sınırları [minBound, maxBound] içine kilitle:
+  // Sağ kenara (bugüne) dayanmışken küçültüldüğünde boşluk açmak yerine %100 geçmiş tarihe doğru genişler
+  const clampToDataBounds = useCallback((t0, t1, bounds) => {
+    if (!bounds || !isFinite(bounds[0]) || !isFinite(bounds[1]) || bounds[1] <= bounds[0]) {
+      return [t0, t1];
+    }
+    const [minB, maxB] = bounds;
+    const maxSpan = maxB - minB;
+    const span = Math.min(maxSpan, Math.max(1e-9, t1 - t0));
+    if (span >= maxSpan) {
+      return [minB, maxB];
+    }
+    let n0 = t0;
+    let n1 = t1;
+    if (n1 > maxB) {
+      n1 = maxB;
+      n0 = Math.max(minB, maxB - span);
+    }
+    if (n0 < minB) {
+      n0 = minB;
+      n1 = Math.min(maxB, minB + span);
+    }
+    return [n0, n1];
+  }, []);
+
   // Canlı Plotly X ekseninden doğrusal (linear) aralığı oku
   const getAxisAndLinearRange = useCallback(() => {
     const el = kap.current;
@@ -41,8 +122,9 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
     const l0 = ax.r2l(ax.range[0]);
     const l1 = ax.r2l(ax.range[1]);
     if (!isFinite(l0) || !isFinite(l1) || l1 <= l0) return null;
-    return { el, ax, l0, l1 };
-  }, []);
+    const bounds = getDataLinearBounds(el, ax);
+    return { el, ax, l0, l1, bounds };
+  }, [getDataLinearBounds]);
 
   // 60fps requestAnimationFrame tabanlı pürüzsüz yakınlaştırma döngüsü
   const startSmoothZoomLoop = useCallback(() => {
@@ -65,7 +147,11 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
         return;
       }
 
-      const { el, ax } = info;
+      const { el, ax, bounds } = info;
+      const clampedTgt = clampToDataBounds(tgt[0], tgt[1], bounds);
+      tgt[0] = clampedTgt[0];
+      tgt[1] = clampedTgt[1];
+
       const span = Math.max(1e-9, tgt[1] - tgt[0]);
       const diff0 = tgt[0] - cur[0];
       const diff1 = tgt[1] - cur[1];
@@ -78,6 +164,9 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
         // Pürüzsüz sönümleme (Smooth damping)
         cur[0] += diff0 * 0.38;
         cur[1] += diff1 * 0.38;
+        const clampedCur = clampToDataBounds(cur[0], cur[1], bounds);
+        cur[0] = clampedCur[0];
+        cur[1] = clampedCur[1];
       }
 
       const r0 = ax.l2r(cur[0]);
@@ -117,7 +206,7 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
     };
 
     zoomRafId.current = requestAnimationFrame(step);
-  }, [getAxisAndLinearRange]);
+  }, [getAxisAndLinearRange, clampToDataBounds]);
 
   const scheduleInteractionRelease = useCallback((delay = 280) => {
     if (interactionReleaseTimer.current) clearTimeout(interactionReleaseTimer.current);
@@ -182,12 +271,17 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
 
         // scale > 1 (açma) -> factor < 1 (daha yakın süreli)
         // scale < 1 (kıstırma) -> factor > 1 (daha geniş süreli)
-        const factor = Math.max(0.08, Math.min(12, 1 / scale));
+        const factor = Math.max(0.08, Math.min(25, 1 / scale));
         const [b0, b1] = initialPinchLinearRange.current;
         const center = (b0 + b1) / 2;
         const halfSpan = ((b1 - b0) / 2) * factor;
+        const info = getAxisAndLinearRange();
 
-        targetLinearRange.current = [center - halfSpan, center + halfSpan];
+        targetLinearRange.current = clampToDataBounds(
+          center - halfSpan,
+          center + halfSpan,
+          info?.bounds
+        );
         startSmoothZoomLoop();
       }
     };
@@ -212,7 +306,7 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
       isInteracting.current = true;
       scheduleInteractionRelease(320);
 
-      const { ax, l0, l1 } = info;
+      const { ax, l0, l1, bounds } = info;
       if (!zoomRafId.current || !targetLinearRange.current || !currentLinearRange.current) {
         currentLinearRange.current = [l0, l1];
         targetLinearRange.current = [l0, l1];
@@ -239,16 +333,18 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
 
       const [t0, t1] = targetLinearRange.current;
       const currentSpan = t1 - t0;
-      const minSpan = ax.type === 'category' ? 4 : currentSpan * 0.02;
-      const maxSpan = ax.type === 'category' ? 5000 : currentSpan * 50;
+      const totalDataSpan = bounds ? bounds[1] - bounds[0] : null;
+      const minSpan = ax.type === 'category' ? 5 : totalDataSpan ? totalDataSpan * 0.003 : currentSpan * 0.02;
+      const maxSpan = totalDataSpan || (ax.type === 'category' ? 50000 : currentSpan * 50);
 
-      const newSpan = currentSpan * factor;
-      if (newSpan < minSpan && factor < 1) return;
-      if (newSpan > maxSpan && factor > 1) return;
+      if (currentSpan * factor < minSpan && factor < 1) return;
+      // Tüm halka arz geçmişi zaten ekrandaysa daha fazla küçültüp boşluk oluşturma
+      if (currentSpan >= maxSpan - 1e-5 && factor > 1) return;
 
       const pivot = t0 + currentSpan * anchor;
-      const nextT0 = pivot + (t0 - pivot) * factor;
-      const nextT1 = pivot + (t1 - pivot) * factor;
+      const rawT0 = pivot + (t0 - pivot) * factor;
+      const rawT1 = pivot + (t1 - pivot) * factor;
+      const [nextT0, nextT1] = clampToDataBounds(rawT0, rawT1, bounds);
 
       if (isFinite(nextT0) && isFinite(nextT1) && nextT1 > nextT0) {
         targetLinearRange.current = [nextT0, nextT1];
@@ -280,7 +376,7 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
         zoomRafId.current = null;
       }
     };
-  }, [config?.staticPlot, getAxisAndLinearRange, scheduleInteractionRelease, startSmoothZoomLoop]);
+  }, [config?.staticPlot, getAxisAndLinearRange, clampToDataBounds, scheduleInteractionRelease, startSmoothZoomLoop]);
 
   // Grafik Çizimi & Güncellemesi
   useEffect(() => {
@@ -382,9 +478,14 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
               } else if (!zoomRafId.current && !isProgrammaticZoom.current) {
                 const info = getAxisAndLinearRange();
                 if (info) {
-                  userXRangeRef.current = [...info.ax.range];
+                  const [c0, c1] = clampToDataBounds(info.l0, info.l1, info.bounds);
                   currentLinearRange.current = [info.l0, info.l1];
-                  targetLinearRange.current = [info.l0, info.l1];
+                  targetLinearRange.current = [c0, c1];
+                  if (Math.abs(c0 - info.l0) > 1e-4 || Math.abs(c1 - info.l1) > 1e-4) {
+                    startSmoothZoomLoop();
+                  } else {
+                    userXRangeRef.current = [...info.ax.range];
+                  }
                 }
               }
               if (!zoomRafId.current) {
@@ -408,7 +509,7 @@ export default function PlotlyGrafik({ data, layout, config, yukseklik, classNam
     return () => {
       iptal = true;
     };
-  }, [data, layout, config, yukseklik, onRelayout, getAxisAndLinearRange]);
+  }, [data, layout, config, yukseklik, onRelayout, getAxisAndLinearRange, clampToDataBounds, startSmoothZoomLoop]);
 
   // Unmount temizliği
   useEffect(() => {

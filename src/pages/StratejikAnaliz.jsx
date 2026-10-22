@@ -27,6 +27,7 @@ const PERIYOTLAR = [
   { id: '1y', etiket: '1Y' },
   { id: '3y', etiket: '3Y' },
   { id: '5y', etiket: '5Y' },
+  { id: 'max', etiket: 'Tümü' },
 ];
 const GRAFIK_TURLERI = [
   { id: 'candle', etiket: '🕯️ Mum' },
@@ -40,6 +41,20 @@ const ANA_GOSTERGELER = ['EMA 20', 'EMA 50', 'SMA 200', 'Bollinger Bantları', '
 const ALT_OSILATORLER = ['RSI', 'MACD', 'Stochastic', 'CCI', 'ATR', 'OBV'];
 
 const sonek = (k) => (k === 1 ? '' : String(k));
+
+function periyotBarSayisi(periyot, interval, toplamBar) {
+  if (!toplamBar || periyot === 'max') return toplamBar || 100;
+  if (interval === '1wk') {
+    return Math.min(toplamBar, { '1mo': 6, '3mo': 14, '6mo': 26, '1y': 52, '3y': 156, '5y': 260 }[periyot] || 52);
+  }
+  if (interval === '1mo') {
+    return Math.min(toplamBar, { '1mo': 6, '3mo': 12, '6mo': 24, '1y': 36, '3y': 60, '5y': 120 }[periyot] || 36);
+  }
+  if (interval === '5m' || interval === '15m' || interval === '60m') {
+    return Math.min(toplamBar, { '1mo': 80, '3mo': 160, '6mo': 300, '1y': 500, '3y': 1000, '5y': 2000 }[periyot] || 120);
+  }
+  return Math.min(toplamBar, { '1mo': 22, '3mo': 66, '6mo': 130, '1y': 120, '3y': 756, '5y': 1260 }[periyot] || 120);
+}
 
 // Heikin-Ashi Hesaplayıcı (Gürültüsüz Trend Mumları)
 function heikinAshiHesapla(o, h, l, c) {
@@ -59,7 +74,7 @@ function heikinAshiHesapla(o, h, l, c) {
 // ============================================================================
 // 1. PROFESYONEL TEKNİK GRAFİK MOTORU (TRADINGVIEW & MATRIKS STİLİ)
 // ============================================================================
-function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritmik, haftaSonuKaldir) {
+function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritmik, haftaSonuKaldir, seciliPeriyot = '1y') {
   const x = v.x;
   const G = v.gostergeler;
   const nAlt = altGostergeler.length;
@@ -185,15 +200,16 @@ function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritm
 
   // Eksenler ve Filigran
   const eksenler = altPanelEksenleri(alanlar, {}, 'right');
-  const basIdx = Math.max(0, x.length - 80);
+  const gorunenBar = periyotBarSayisi(seciliPeriyot, v.interval, x.length);
+  const basIdx = Math.max(0, x.length - gorunenBar);
   const sonIdx = Math.max(0, x.length - 1);
-  const son60 = x[basIdx], sonBar = x[sonIdx];
+  const sonBasTarih = x[basIdx], sonBarTarih = x[sonIdx];
 
   eksenler.xaxis = {
     ...eksenler.xaxis,
     ...(haftaSonuKaldir
       ? { type: 'category', nticks: 10, range: [basIdx, sonIdx] }
-      : { range: [son60, sonBar] }),
+      : { range: [sonBasTarih, sonBarTarih] }),
     rangeslider: { visible: false },
     showgrid: true,
     gridcolor: 'rgba(42, 46, 57, 0.45)',
@@ -226,7 +242,7 @@ function teknikFigurUret(v, anaGostergeler, altGostergeler, grafikTuru, logaritm
     annotations,
     dragmode: 'pan',
     hovermode: 'x unified',
-    uirevision: `bist_${v.hisse}_${v.interval}_${haftaSonuKaldir}`,
+    uirevision: `bist_${v.hisse}_${v.interval}_${seciliPeriyot}_${haftaSonuKaldir}`,
     height: Math.max(560, 500 + 130 * nAlt),
     margin: { l: 20, r: 65, t: 36, b: 24 },
     legend: {
@@ -280,10 +296,17 @@ function fraktalFigurUret(v) {
     });
   }
 
+  const basIdx = Math.max(0, x.length - 252);
+  const sonIdx = Math.max(0, x.length - 1);
   const layout = {
-    ...altPanelEksenleri(alan, { tickformat: '%d %b %y', nticks: 18 }),
+    ...altPanelEksenleri(alan, {
+      tickformat: '%d %b %y',
+      nticks: 18,
+      ...(x.length > 0 ? { range: [x[basIdx], x[sonIdx]] } : {}),
+    }),
     shapes,
     hovermode: 'x unified',
+    uirevision: `fraktal_${v.hisse || 'bist'}`,
     height: 680,
     margin: { l: 25, r: 65, t: 30, b: 35 },
     legend: { orientation: 'h', y: 1.04, x: 1, xanchor: 'right' },
@@ -335,11 +358,11 @@ export default function StratejikAnaliz({ api }) {
   const [formulMetin, setFormulMetin] = useState("df['close'] - df['sma_20']");
   const [formulOnayli, setFormulOnayli] = useState('');
 
-  // 1. Teknik Veri Yükleme
+  // 1. Teknik Veri Yükleme (Hissenin halka arzından itibaren tüm geçmişi 'max' olarak çekilir)
   const teknikYukle = useCallback(async () => {
     try {
       setHata('');
-      const r = await api(`/api/technical/${hisse}?interval=${interval}&period=${period}&formul=${encodeURIComponent(formulOnayli)}`);
+      const r = await api(`/api/technical/${hisse}?interval=${interval}&period=max&formul=${encodeURIComponent(formulOnayli)}`);
       setTeknikVeri(r);
       if (r?.istatistik?.son_fiyat) {
         setEmirFiyat(prev => prev || r.istatistik.son_fiyat);
@@ -349,7 +372,7 @@ export default function StratejikAnaliz({ api }) {
       setHata(e.message || 'Teknik veri alınamadı.');
       return null;
     }
-  }, [api, hisse, interval, period, formulOnayli]);
+  }, [api, hisse, interval, formulOnayli]);
 
   // 2. Fraktal Veri Yükleme
   const fraktalYukle = useCallback(async () => {
@@ -413,18 +436,22 @@ export default function StratejikAnaliz({ api }) {
     }
   }, [api, hisse]);
 
-  // Hisse / Periyot Değişimi
+  // Hisse / Hassasiyet Değişimi
   useEffect(() => {
     let iptal = false;
     setBekle(true);
-    Promise.all([
-      teknikYukle().then(r => masaVerileriYukle(r?.istatistik?.son_fiyat)),
-      fraktalYukle(),
-    ]).finally(() => {
-      if (!iptal) setBekle(false);
-    });
+    teknikYukle()
+      .then(r => masaVerileriYukle(r?.istatistik?.son_fiyat))
+      .finally(() => {
+        if (!iptal) setBekle(false);
+      });
     return () => { iptal = true; };
-  }, [teknikYukle, fraktalYukle, masaVerileriYukle]);
+  }, [teknikYukle, masaVerileriYukle]);
+
+  // Fraktal Verisi Değişimi
+  useEffect(() => {
+    fraktalYukle();
+  }, [fraktalYukle]);
 
   // Derinlikte herhangi bir fiyata tıklandığında emir kutusuna aktar
   const fiyataTikla = (f) => {
@@ -483,8 +510,8 @@ export default function StratejikAnaliz({ api }) {
   // Figürler
   const teknikFigur = useMemo(() => {
     if (!teknikVeri) return null;
-    return teknikFigurUret(teknikVeri, anaGostergeler, altGostergeler, grafikTuru, logaritmik, haftaSonuKaldir);
-  }, [teknikVeri, anaGostergeler, altGostergeler, grafikTuru, logaritmik, haftaSonuKaldir]);
+    return teknikFigurUret(teknikVeri, anaGostergeler, altGostergeler, grafikTuru, logaritmik, haftaSonuKaldir, period);
+  }, [teknikVeri, anaGostergeler, altGostergeler, grafikTuru, logaritmik, haftaSonuKaldir, period]);
 
   const fraktalFigur = useMemo(() => {
     if (!fraktalVeri) return null;

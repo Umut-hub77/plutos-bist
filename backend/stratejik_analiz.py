@@ -133,13 +133,15 @@ def _hesapla_metrikler(df, sembol):
     acilis = round(float(df['open'].iloc[-1]), 2)
     hacim_lot = round(float(df['volume'].iloc[-1]), 0)
     
-    # A.O.F (Ağırlıklı Ortalama Fiyat / VWAP)
-    toplam_lot = df['volume'].sum()
-    aof = round(float((df['close'] * df['volume']).sum() / toplam_lot), 2) if toplam_lot > 0 else round(lp, 2)
+    # A.O.F (Ağırlıklı Ortalama Fiyat / VWAP — son 20 bar)
+    df_son20 = df.tail(20)
+    toplam_lot = df_son20['volume'].sum()
+    aof = round(float((df_son20['close'] * df_son20['volume']).sum() / toplam_lot), 2) if toplam_lot > 0 else round(lp, 2)
     hacim_tl = round(hacim_lot * aof, 0)
     
-    min_52 = round(float(df['low'].min()), 2)
-    max_52 = round(float(df['high'].max()), 2)
+    df_52 = df.tail(252)
+    min_52 = round(float(df_52['low'].min()), 2)
+    max_52 = round(float(df_52['high'].max()), 2)
     
     meta = BIST_SIRKETLER.get(sembol, {"ad": f"{sembol} Yatırım Ortaklığı", "pazar": "BIST • Yıldız Pazar", "sektor": "Piyasa"})
     
@@ -186,11 +188,14 @@ def kur(app, d):
         if not (_PARAM.match(interval) and _PARAM.match(period)):
             raise HTTPException(status_code=400, detail='Geçersiz periyot/hassasiyet.')
 
-        df_ana = _naif_temizle(vm.gecmis_veri(stock, period, interval))
+        tam_periyot = 'max' if interval in ('1d', '5d', '1wk', '1mo') else ('2y' if interval in ('60m', '1h') else '60d')
+        df_search = _naif_temizle(vm.gecmis_veri(stock, tam_periyot, interval))
+        df_ana = _naif_temizle(vm.gecmis_veri(stock, period, interval)) if period != tam_periyot else df_search
+        if df_ana.empty:
+            df_ana = df_search
         if df_ana.empty:
             raise HTTPException(status_code=404, detail=f"{stock} için '{period}' / '{interval}' seçiminde veri alınamadı.")
 
-        df_search = _naif_temizle(vm.gecmis_veri(stock, '10y' if interval == '1d' else '2y', interval))
         if df_search.empty or len(df_search) < len(df_ana):
             df_search = df_ana
 
@@ -230,7 +235,7 @@ def kur(app, d):
         # --- Fraktal motor ---
         f_len = 30
         eslesmeler, roi_listesi = [], []
-        for i, (score, s_idx, match_len) in enumerate(ml.find_multiple_matches(v_close.values, v_search.values, window_size=len(v_close), top_n=2)):
+        for i, (score, s_idx, match_len) in enumerate(ml.find_multiple_matches(v_close.values[-min(len(v_close), 252):], v_search.values, window_size=min(len(v_close), 252), top_n=2)):
             if s_idx + match_len + f_len >= len(v_search):
                 continue
             p_seg = v_search.values[s_idx: s_idx + match_len]
@@ -260,17 +265,22 @@ def kur(app, d):
 
         meta = BIST_SIRKETLER.get(stock, {"ad": f"{stock} A.Ş.", "pazar": "BIST • Yıldız Pazar", "sektor": "Piyasa"})
 
+        # Grafikte hissenin tüm geçmişi yer alır ki küçülttükçe geriye doğru boşluksuz açılsın
+        g_close = v_search
+        g_e20, g_e50 = ml.calculate_ema(g_close, 20), ml.calculate_ema(g_close, 50)
+        g_macd, g_sig, g_hist = ml.calculate_macd(g_close)
+
         return {
-            'hisse': stock, 'interval': interval, 'period': period, 'bar_sayisi': len(df_ana),
+            'hisse': stock, 'interval': interval, 'period': period, 'bar_sayisi': len(df_search),
             'sirket_adi': meta['ad'], 'pazar': meta['pazar'],
             'fiyat': _f(lp, 2), 'rsi': _f(rsi_ana, 1), 'trend': pn_ana, 'portfoy': portfoy, 'bildirim': bildirim,
             'ema20': _f(e20.iloc[-1], 2), 'ema50': _f(e50.iloc[-1], 2), 'macd': _f(macd.iloc[-1], 2),
             'destek': round(yakin_destek, 2), 'direnc': round(yakin_direnc, 2),
             'hedef_fiyat': hedef_fiyat, 'stop_loss': stop_loss, 'risk_odul': risk_odul,
             'grafik': {
-                'x': _tarih(v_close.index, gunluk), 'fiyat': _liste(v_close, 3), 'ema20': _liste(e20, 3), 'ema50': _liste(e50, 3),
-                'macd': _liste(macd), 'sinyal': _liste(sig), 'hist': _liste(hist),
-                'hacim': _liste(df_ana['Volume'], 0) if 'Volume' in df_ana.columns else [],
+                'x': _tarih(g_close.index, gunluk), 'fiyat': _liste(g_close, 3), 'ema20': _liste(g_e20, 3), 'ema50': _liste(g_e50, 3),
+                'macd': _liste(g_macd), 'sinyal': _liste(g_sig), 'hist': _liste(g_hist),
+                'hacim': _liste(df_search['Volume'], 0) if 'Volume' in df_search.columns else [],
             },
             'eslesmeler': eslesmeler,
             'projeksiyon': proj,
@@ -283,13 +293,16 @@ def kur(app, d):
     # SEKME 2: İNTERAKTİF TEKNİK GRAFİK
     # ======================================================================
     @r.get('/api/technical/{hisse}')
-    def teknik_grafik(hisse: str, interval: str = '1d', period: str = '1y', formul: str = ''):
+    def teknik_grafik(hisse: str, interval: str = '1d', period: str = 'max', formul: str = ''):
         sembol = hisse_kontrol(hisse)
         
-        # Öncelik gecmis_veri (interval & period destekli)
-        df_ham = vm.gecmis_veri(sembol, period=period, interval=interval)
+        # Hissenin piyasaya sürüldüğü (halka arz) tarihten itibaren tüm geçmişini çek
+        tam_periyot = 'max' if interval in ('1d', '5d', '1wk', '1mo') else ('2y' if interval in ('60m', '1h') else '60d')
+        df_ham = vm.gecmis_veri(sembol, period=tam_periyot, interval=interval)
         if df_ham is None or df_ham.empty:
-            df_ham, _ = vm.ticker_gecmisi(sembol, period=period)
+            df_ham = vm.gecmis_veri(sembol, period=period, interval=interval)
+        if df_ham is None or df_ham.empty:
+            df_ham, _ = vm.ticker_gecmisi(sembol, period='max')
             
         if df_ham is None or df_ham.empty:
             raise HTTPException(status_code=404, detail=f"'{sembol}' için veri temin edilemedi. Lütfen periyodu değiştirin.")
