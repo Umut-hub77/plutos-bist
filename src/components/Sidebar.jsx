@@ -321,7 +321,7 @@ export default function Sidebar({
         <div className="sidebar-hesap-karti">
           <div className="sidebar-hesap-ust">
             <span className="sidebar-hesap-tur">
-              {accountMode === 'real' ? '💼 GERÇEK BANKA PORTFÖYÜ' : '🎮 DEMO İŞLEM HESABI'}
+              {accountMode === 'real' ? '🏛️ GERÇEK BANKA PORTFÖYÜ' : '🎮 DEMO İŞLEM HESABI'}
             </span>
             <span className="sidebar-hesap-bakiye">
               {Number(bakiye || 0).toLocaleString('tr-TR')} ₺
@@ -333,7 +333,7 @@ export default function Sidebar({
               className={`sidebar-mod-btn ${accountMode === 'demo' ? 'aktif' : ''}`}
               onClick={() => onHesapModuDegistir('demo')}
             >
-              🎮 Demo Masası
+              🎮 Demo Hesap
             </button>
             <button
               type="button"
@@ -381,7 +381,7 @@ export default function Sidebar({
           ) : (
             /* Standart Navigasyon Hiyerarşisi */
             <div className="sidebar-nav-agaci">
-              <div className="sidebar-bolum-baslik">İŞLEM MASALARI & MODÜLLER</div>
+              <div className="sidebar-bolum-baslik">ANA MENÜ & MODÜLLER</div>
 
               {/* Ana Sayfa */}
               <button
@@ -393,11 +393,11 @@ export default function Sidebar({
                 }}
               >
                 <span className="sidebar-oge-ikon">🏛️</span>
-                <span className="sidebar-oge-metin" style={{ fontWeight: 600 }}>Ana Sayfa Kokpiti</span>
+                <span className="sidebar-oge-metin" style={{ fontWeight: 600 }}>Ana Sayfa</span>
                 {kategori === 'Ana Sayfa' && <span className="sidebar-aktif-nokta" />}
               </button>
 
-              {/* Analiz Masası (7 Modül) */}
+              {/* Analiz */}
               <div className="sidebar-kategori-grup">
                 <button
                   type="button"
@@ -406,8 +406,8 @@ export default function Sidebar({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span>📈</span>
-                    <span className="sidebar-kategori-metin">Analiz Masası</span>
-                    <span className="kategori-sayac">7</span>
+                    <span className="sidebar-kategori-metin">Analiz</span>
+                    <span className="kategori-sayac">{KATEGORILER['Analiz'].length}</span>
                   </div>
                   <span className={`kategori-ok ${genisleyenKat['Analiz'] ? 'acik' : ''}`}>▾</span>
                 </button>
@@ -448,7 +448,7 @@ export default function Sidebar({
                 )}
               </div>
 
-              {/* Portföy Masası (5 Modül) */}
+              {/* Portföy */}
               <div className="sidebar-kategori-grup">
                 <button
                   type="button"
@@ -457,8 +457,8 @@ export default function Sidebar({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span>💼</span>
-                    <span className="sidebar-kategori-metin" style={{ color: '#f0f3fa', fontSize: 13, fontWeight: 600 }}>Portföy Masası</span>
-                    <span className="kategori-sayac">5</span>
+                    <span className="sidebar-kategori-metin" style={{ color: '#f0f3fa', fontSize: 13, fontWeight: 600 }}>Portföy</span>
+                    <span className="kategori-sayac">{KATEGORILER['Portföy'].length}</span>
                   </div>
                   <span className={`kategori-ok ${genisleyenKat['Portföy'] ? 'acik' : ''}`}>▾</span>
                 </button>
@@ -499,7 +499,7 @@ export default function Sidebar({
                 )}
               </div>
 
-              {/* Kurumsal Araçlar (4 Modül) */}
+              {/* Araçlar */}
               <div className="sidebar-kategori-grup">
                 <button
                   type="button"
@@ -508,8 +508,8 @@ export default function Sidebar({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span>🛠️</span>
-                    <span className="sidebar-kategori-metin" style={{ color: '#f0f3fa', fontSize: 13, fontWeight: 600 }}>Kurumsal Araçlar</span>
-                    <span className="kategori-sayac">4</span>
+                    <span className="sidebar-kategori-metin" style={{ color: '#f0f3fa', fontSize: 13, fontWeight: 600 }}>Araçlar</span>
+                    <span className="kategori-sayac">{KATEGORILER['Araçlar'].length}</span>
                   </div>
                   <span className={`kategori-ok ${genisleyenKat['Araçlar'] ? 'acik' : ''}`}>▾</span>
                 </button>
@@ -552,7 +552,7 @@ export default function Sidebar({
 
               {/* 5. Hızlı Eylemler & Kısayollar */}
               <div className="sidebar-bolum-baslik" style={{ marginTop: 14 }}>
-                HIZLI KISAYOLLAR & EYLEMLER
+                HIZLI KISAYOLLAR
               </div>
               <div className="sidebar-kisayollar-grid">
                 <button
@@ -562,10 +562,10 @@ export default function Sidebar({
                     kapat();
                     onTradeAllAc();
                   }}
-                  title="TradeAll Hızlı Emir Masasını Aç"
+                  title="Emir Ver Masasını Aç"
                 >
                   <span className="simsek">⚡</span>
-                  <span>Hızlı Al-Sat</span>
+                  <span>Emir Ver</span>
                 </button>
 
                 <button
@@ -588,10 +588,10 @@ export default function Sidebar({
                     kapat();
                     onBildirimAc();
                   }}
-                  title="Bildirim & Olay Merkezini Aç"
+                  title="Fiyat Alarmları ve Bildirimler"
                 >
                   <span>🔔</span>
-                  <span>Bildirimler</span>
+                  <span>Fiyat Alarmları</span>
                   {bildirimSayisi > 0 && <span className="sayac">{bildirimSayisi}</span>}
                 </button>
 
@@ -605,7 +605,7 @@ export default function Sidebar({
                   title="Açık Bankacılık ile Gerçek Portföy Bağla"
                 >
                   <span>🏛️</span>
-                  <span>{bagliBanka ? 'Banka Ayarı' : 'Banka Bağla'}</span>
+                  <span>{bagliBanka ? bagliBanka : 'Banka Bağla'}</span>
                 </button>
               </div>
 
@@ -637,12 +637,7 @@ export default function Sidebar({
                 </div>
               </div>
 
-              {/* 7. Hızlı Pozisyon Yönetimi */}
-              <div style={{ marginTop: 12 }}>
-                <PortfoyIslemleri api={api} />
-              </div>
-
-              {/* 8. Sistem Bilgi Kartı */}
+              {/* 7. Sistem Bilgi Kartı */}
               <div className="sidebar-sistem-kart">
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>BIST Seans:</span>

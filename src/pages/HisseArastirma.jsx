@@ -47,6 +47,8 @@ export default function HisseArastirma({ api, onModulDegistir }) {
   const [kiyaslamaUyari, setKiyaslamaUyari] = useState('');
   const [kiyaslamaModal, setKiyaslamaModal] = useState(false);
   const [kiyaslamaVerisi, setKiyaslamaVerisi] = useState(null);
+  const [kiyaslamaSeriler, setKiyaslamaSeriler] = useState(null);
+  const [kiyaslamaPeriyot, setKiyaslamaPeriyot] = useState('3mo');
   const [kiyaslamaYukleniyor, setKiyaslamaYukleniyor] = useState(false);
 
   // Veri Çekme
@@ -101,7 +103,7 @@ export default function HisseArastirma({ api, onModulDegistir }) {
   };
 
   // Karşılaştırma Modalı Aç
-  const karsilastirmayiAc = async (ozelKodlar) => {
+  const karsilastirmayiAc = async (ozelKodlar, donem = kiyaslamaPeriyot) => {
     const kodlar = Array.isArray(ozelKodlar) ? ozelKodlar : seciliHisseler;
     if (!kodlar || kodlar.length < 2) {
       setKiyaslamaUyari('⚠️ Kıyaslama yapabilmek için lütfen tablodan en az 2 hisse seçiniz.');
@@ -111,8 +113,12 @@ export default function HisseArastirma({ api, onModulDegistir }) {
     setKiyaslamaModal(true);
     setKiyaslamaYukleniyor(true);
     try {
-      const res = await api(`/api/research/compare?hisseler=${encodeURIComponent(kodlar.join(','))}`);
+      const [res, seriRes] = await Promise.all([
+        api(`/api/research/compare?hisseler=${encodeURIComponent(kodlar.join(','))}`),
+        api(`/api/sector-compare?hisseler=${encodeURIComponent(kodlar.join(','))}&periyot=${donem}`).catch(() => null),
+      ]);
       setKiyaslamaVerisi(res);
+      setKiyaslamaSeriler(seriRes?.seriler || null);
     } catch (e) {
       setKiyaslamaUyari('Kıyaslama verisi alınamadı: ' + e.message);
       setKiyaslamaModal(false);
@@ -805,7 +811,10 @@ export default function HisseArastirma({ api, onModulDegistir }) {
                         <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                           <div style={{ display: 'inline-flex', gap: 6 }}>
                             <button
-                              onClick={() => onModulDegistir?.('Stratejik Analiz', { hisse: h.kod })}
+                              onClick={() => {
+                                window.location.hash = `#stratejik?hisse=${h.kod}`;
+                                onModulDegistir?.('Analiz', 'Stratejik Analiz');
+                              }}
                               style={{
                                 padding: '3px 8px',
                                 background: '#1E232F',
@@ -817,7 +826,7 @@ export default function HisseArastirma({ api, onModulDegistir }) {
                               }}
                               title="Stratejik Analiz Masasında İncele"
                             >
-                              Detay
+                              Grafik
                             </button>
                             <button
                               onClick={() => satirdanKiyasla(h.kod)}
@@ -1027,6 +1036,60 @@ export default function HisseArastirma({ api, onModulDegistir }) {
                     </div>
                   </div>
                 </div>
+
+                {/* Göreceli Fiyat Büyümesi Grafiği (Sektör & Hisse Kıyaslama) */}
+                {kiyaslamaSeriler && kiyaslamaSeriler.length > 0 && (
+                  <div style={{ background: '#131722', border: '1px solid #2A2E39', borderRadius: 8, padding: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                      <div>
+                        <strong style={{ color: '#FFFFFF', fontSize: 13 }}>📈 Göreceli Fiyat Büyümesi (Başlangıç = 100)</strong>
+                        <span style={{ fontSize: 11, color: '#787B86', marginLeft: 8 }}>Normalize Edilmiş Performans Kıyaslaması</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {[
+                          { id: '1mo', etiket: '1 Ay' },
+                          { id: '3mo', etiket: '3 Ay' },
+                          { id: '6mo', etiket: '6 Ay' },
+                          { id: '1y', etiket: '1 Yıl' },
+                        ].map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`arac-btn ${kiyaslamaPeriyot === p.id ? 'aktif' : ''}`}
+                            style={{ fontSize: 11, padding: '3px 10px' }}
+                            onClick={() => {
+                              setKiyaslamaPeriyot(p.id);
+                              karsilastirmayiAc(seciliHisseler, p.id);
+                            }}
+                          >
+                            {p.etiket}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <PlotlyGrafik
+                      data={kiyaslamaSeriler.map(s => ({
+                        type: 'scatter',
+                        mode: 'lines',
+                        x: s.noktalar.map(p => p.t),
+                        y: s.noktalar.map(p => p.v),
+                        name: s.hisse,
+                        line: { width: 2.2 },
+                      }))}
+                      layout={{
+                        height: 270,
+                        margin: { l: 40, r: 20, t: 10, b: 30 },
+                        paper_bgcolor: '#131722',
+                        plot_bgcolor: '#131722',
+                        hovermode: 'x unified',
+                        font: { family: 'JetBrains Mono', color: '#787B86', size: 11 },
+                        xaxis: { showgrid: true, gridcolor: 'rgba(42, 46, 57, 0.45)' },
+                        yaxis: { showgrid: true, gridcolor: 'rgba(42, 46, 57, 0.45)', tickformat: '.0f' },
+                        legend: { orientation: 'h', y: 1.08, x: 1, xanchor: 'right', font: { color: '#D1D4DC' } },
+                      }}
+                    />
+                  </div>
+                )}
 
                 {/* Yan Yana Metrik Tablosu */}
                 <div style={{ overflowX: 'auto', border: '1px solid #2A2E39', borderRadius: 8 }}>

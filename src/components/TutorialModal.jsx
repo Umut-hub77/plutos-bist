@@ -72,8 +72,8 @@ const REHBER_ADIMLARI = [
           Hesabınıza tanımlı <b>100.000 ₺ sanal nakit</b> bulunmaktadır.
         </p>
         <ul style={{ margin: 0, paddingLeft: 18, color: '#D1D4DC', fontSize: 12.5, lineHeight: 1.7 }}>
-          <li><b>Emir Ver (Demo):</b> İstediğiniz hisseyi seçip, Piyasa veya Limit fiyatıyla gerçek piyasa fiyatından demo alıp satabilirsiniz.</li>
-          <li><b>Portföyüm:</b> Aldığınız hisselerin anlık piyasa değerini, kâr/zarar oranını ve maliyetinizi takip edebilirsiniz.</li>
+          <li><b>Emir Ver:</b> İstediğiniz hisseyi seçip, Piyasa veya Limit fiyatıyla gerçek piyasa fiyatından demo alıp satabilirsiniz.</li>
+          <li><b>Portföy İzleme:</b> Aldığınız hisselerin anlık piyasa değerini, kâr/zarar oranını ve maliyetinizi takip edebilirsiniz.</li>
           <li><b>Gerçek Borsaya Gitmez:</b> İşlemleriniz simülasyondur; böylece stratejilerinizi güvenle test edebilirsiniz.</li>
         </ul>
       </div>

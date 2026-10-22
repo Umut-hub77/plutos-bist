@@ -284,6 +284,35 @@ export default function FiyatAlarmlari({ api, bildirimYenile }) {
           </table>
         </div>
       </div>
+
+      {/* Alt Panel: BIST Seans & Sistem Bildirimleri */}
+      <div className="panel" style={{ padding: 16, background: '#131722', border: '1px solid #2a2e39', borderRadius: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h4 style={{ margin: 0, fontSize: 14, color: '#f0f3fa' }}>📬 BIST Seans & Sistem Bildirimleri</h4>
+          <span style={{ fontSize: 11, color: '#787b86' }}>Borsa İstanbul & Takasbank Duyuruları</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
+          <div style={{ padding: 12, background: '#1e222d', borderLeft: '3px solid #2962FF', borderRadius: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <strong style={{ fontSize: 13, color: '#f0f3fa' }}>🔔 BIST 100 Sürekli Müzayede Seansı</strong>
+              <span style={{ fontSize: 10.5, color: '#787b86', fontFamily: 'monospace' }}>10:00 - 18:05</span>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: '#d1d4dc' }}>
+              Borsa İstanbul Pay Piyasası sürekli müzayede işlemleri hafta içi 10:00 - 18:05 saatleri arasında aktif olarak yürütülmektedir.
+            </p>
+          </div>
+          <div style={{ padding: 12, background: '#1e222d', borderLeft: '3px solid #FF9800', borderRadius: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <strong style={{ fontSize: 13, color: '#f0f3fa' }}>⚠️ Takasbank T+2 Günlük Mutabakat</strong>
+              <span style={{ fontSize: 10.5, color: '#787b86', fontFamily: 'monospace' }}>T+2 Valör</span>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: '#d1d4dc' }}>
+              Gerçekleşen hisse senedi alım-satım işlemleriniz için T+2 valörlü nakit ve pay takas mutabakatı otomatik takip edilmektedir.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
+

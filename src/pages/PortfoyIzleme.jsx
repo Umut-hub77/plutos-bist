@@ -270,7 +270,7 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
               </button>
               <button
                 className="arac-btn aktif"
-                onClick={() => onModulDegistir?.('Portföy', 'Emir Ver (Demo)')}
+                onClick={() => onModulDegistir?.('Portföy', 'Emir Ver')}
                 style={{ fontSize: 12, padding: '7px 14px' }}
               >
                 + Yeni Emir Ver
@@ -363,7 +363,7 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
             </div>
             <button
               className="arac-btn"
-              onClick={() => onModulDegistir?.('Portföy', 'Emir Ver (Demo)')}
+              onClick={() => onModulDegistir?.('Portföy', 'Emir Ver')}
               style={{ fontSize: 11, padding: '4px 10px' }}
             >
               Emir Masasına Git ›
@@ -424,7 +424,7 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
             {!isReal && (
               <button
                 className="arac-btn aktif"
-                onClick={() => onModulDegistir?.('Portföy', 'Emir Ver (Demo)')}
+                onClick={() => onModulDegistir?.('Portföy', 'Emir Ver')}
                 style={{ fontSize: 11.5, padding: '5px 12px' }}
               >
                 + Yeni Emir Ver
@@ -485,7 +485,7 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
                                   className="btn-aksiyon-al"
                                   onClick={() => {
                                     window.location.hash = `#emir?hisse=${p.hisse}&yon=AL`;
-                                    onModulDegistir?.('Portföy', 'Emir Ver (Demo)');
+                                    onModulDegistir?.('Portföy', 'Emir Ver');
                                   }}
                                   title={`${p.hisse} Hızlı Alış Emri Gir`}
                                 >
@@ -495,7 +495,7 @@ export default function PortfoyIzleme({ api, onModulDegistir }) {
                                   className="btn-aksiyon-sat"
                                   onClick={() => {
                                     window.location.hash = `#emir?hisse=${p.hisse}&yon=SAT`;
-                                    onModulDegistir?.('Portföy', 'Emir Ver (Demo)');
+                                    onModulDegistir?.('Portföy', 'Emir Ver');
                                   }}
                                   title={`${p.hisse} Hızlı Satış Emri Gir`}
                                 >

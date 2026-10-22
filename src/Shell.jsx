@@ -146,37 +146,60 @@ function ShellIc({ token, ad, soyad, onCikis }) {
     };
   }, [api]);
 
-  // URL Hash yönlendirmesini dinleme (#stratejik, #emir, #portfoy, #tarayici)
+  const modulGit = useCallback((katVeyaMod, modAd) => {
+    setBildirimAcik(false);
+    const normalizeMod = (ad) =>
+      ad === 'Emir Ver (Demo)' ? 'Emir Ver'
+      : ad === 'Portföyüm' ? 'Portföy İzleme'
+      : ad === 'Sektör Karşılaştırma' ? 'Hisse Araştırma'
+      : ad === 'Bildirimler' ? 'Fiyat Alarmları'
+      : ad;
+
+    if (modAd && typeof modAd === 'string') {
+      const norm = normalizeMod(modAd);
+      setKategori(katVeyaMod);
+      setModul(s => ({ ...s, [katVeyaMod]: norm }));
+      return;
+    }
+    if (katVeyaMod === 'Ana Sayfa') {
+      setKategori('Ana Sayfa');
+      return;
+    }
+    const norm = normalizeMod(katVeyaMod);
+    for (const [k, list] of Object.entries(KATEGORILER)) {
+      if (list.includes(norm)) {
+        setKategori(k);
+        setModul(s => ({ ...s, [k]: norm }));
+        return;
+      }
+    }
+  }, []);
+
+  // URL Hash yönlendirmesini dinleme (#stratejik, #emir, #portfoy, #tarayici, #alarm)
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash;
       if (!hash) return;
       if (hash.startsWith('#stratejik')) {
-        setBildirimAcik(false);
-        setKategori('Analiz');
-        setModul(m => ({ ...m, Analiz: 'Stratejik Analiz' }));
+        modulGit('Analiz', 'Stratejik Analiz');
       } else if (hash.startsWith('#emir')) {
-        setBildirimAcik(false);
-        setKategori('Portföy');
-        setModul(m => ({ ...m, Portföy: 'Emir Ver (Demo)' }));
+        modulGit('Portföy', 'Emir Ver');
       } else if (hash.startsWith('#portfoy')) {
-        setBildirimAcik(false);
-        setKategori('Portföy');
-        setModul(m => ({ ...m, Portföy: 'Portföyüm' }));
+        modulGit('Portföy', 'Portföy İzleme');
       } else if (hash.startsWith('#tarayici')) {
-        setBildirimAcik(false);
-        setKategori('Analiz');
-        setModul(m => ({ ...m, Analiz: 'Piyasa Tarayıcı' }));
+        modulGit('Analiz', 'Piyasa Tarayıcı');
+      } else if (hash.startsWith('#alarm')) {
+        modulGit('Araçlar', 'Fiyat Alarmları');
       }
     };
 
     handleHash();
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
-  }, []);
+  }, [modulGit]);
 
   const aktifModul = kategori === 'Ana Sayfa' ? 'Ana Sayfa' : (modul[kategori] || KATEGORILER[kategori][0]);
-  const ekranAdi = bildirimAcik ? 'Bildirimler' : aktifModul;
+  const ekranAdi = bildirimAcik ? 'Fiyat Alarmları' : aktifModul;
   const Sayfa = SAYFALAR[ekranAdi];
 
   // Filtrelenmiş Ticker Listesi
@@ -194,8 +217,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
 
   const hisseyeGit = (hisse) => {
     window.location.hash = `#stratejik?hisse=${hisse}`;
-    setKategori('Analiz');
-    setModul(m => ({ ...m, Analiz: 'Stratejik Analiz' }));
+    modulGit('Analiz', 'Stratejik Analiz');
   };
 
   return (
@@ -215,14 +237,12 @@ function ShellIc({ token, ad, soyad, onCikis }) {
         kategori={kategori}
         aktifModul={aktifModul}
         onModulSec={(kat, m) => {
-          setBildirimAcik(false);
-          setKategori(kat);
-          setModul(s => ({ ...s, [kat]: m }));
+          modulGit(kat, m);
         }}
         bildirimSayisi={bildirimSayisi}
         onBildirimAc={() => {
           setSidebarAcik(false);
-          setBildirimAcik(true);
+          modulGit('Araçlar', 'Fiyat Alarmları');
         }}
         onRehberAc={() => {
           setSidebarAcik(false);
@@ -230,7 +250,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
         }}
         onTradeAllAc={() => {
           setSidebarAcik(false);
-          setTradeAllModalAcik(true);
+          modulGit('Portföy', 'Emir Ver');
         }}
         accountMode={accountMode}
         onHesapModuDegistir={(yeniMod) => hesapModuAyarla(yeniMod)}
@@ -360,7 +380,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
                 }}
               >
                 <span>🎮</span>
-                <span className="btn-metin">Demo</span>
+                <span className="btn-metin">Demo Hesap</span>
               </button>
 
               <button
@@ -389,7 +409,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
                   transition: 'all 0.2s ease',
                 }}
               >
-                <span>💼</span>
+                <span>🏛️</span>
                 <span className="btn-metin">{bagliBanka ? bagliBanka : 'Banka Bağla'}</span>
                 {accountMode === 'real' && (
                   <span style={{ fontSize: 9.5, background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 4 }}>
@@ -415,33 +435,29 @@ function ShellIc({ token, ad, soyad, onCikis }) {
               <div
                 className="cockpit-bakiye-kutu"
                 onClick={() => {
-                  if (accountMode === 'real') {
-                    setBankaModalAcik(true);
-                  } else {
-                    setTradeAllModalAcik(true);
-                  }
+                  modulGit('Portföy', 'Portföy İzleme');
                 }}
                 style={{
                   borderColor: accountMode === 'real' ? 'rgba(255,152,0,0.4)' : undefined,
                   background: accountMode === 'real' ? 'rgba(255,152,0,0.08)' : undefined,
                 }}
-                title={accountMode === 'real' ? `${bagliBanka} Yatırım Nakit Bakiyesi` : "Hesap Sanal Bakiyesi / Teminat — Hızlı Emir İçin Tıklayın"}
+                title="Portföy İzleme ekranına gitmek için tıklayın"
               >
                 <span className="bakiye-etiket" style={{ color: accountMode === 'real' ? '#FF9800' : undefined }}>
-                  {accountMode === 'real' ? 'GERÇEK NAKİT:' : 'PORTFÖY:'}
+                  {accountMode === 'real' ? 'GERÇEK NAKİT:' : 'NAKİT:'}
                 </span>
                 <span className="bakiye-deger">{Number(bakiye).toLocaleString('tr-TR')} ₺</span>
               </div>
             )}
 
-            {/* TradeAll Hızlı Al-Sat Masası Açma Butonu */}
+            {/* Emir Ver Butonu (Portföy -> Emir Ver ile aynı ad ve işlev) */}
             <button
               className="tradeall-hizli-emir-btn"
-              onClick={() => setTradeAllModalAcik(true)}
-              title="TradeAll Hızlı Emir Masasını Aç (Tek tıkla BIST Pay Alış / Satış)"
+              onClick={() => modulGit('Portföy', 'Emir Ver')}
+              title="Emir Ver Masasını Aç (BIST Alış / Satış)"
             >
               <span className="simsek-ikon">⚡</span>
-              <span className="btn-metin">Hızlı Al-Sat</span>
+              <span className="btn-metin">Emir Ver</span>
             </button>
 
             {/* Rehber Butonu */}
@@ -454,14 +470,14 @@ function ShellIc({ token, ad, soyad, onCikis }) {
               <span className="btn-metin">Rehber</span>
             </button>
 
-            {/* Bildirimler Butonu */}
+            {/* Fiyat Alarmları Butonu (Araçlar -> Fiyat Alarmları ile aynı ad ve işlev) */}
             <button
               className="logout-btn header-bildirim-btn"
-              onClick={() => setBildirimAcik(a => !a)}
-              title="Bildirim & Olay Merkezi"
+              onClick={() => modulGit('Araçlar', 'Fiyat Alarmları')}
+              title="Fiyat Alarmları ve Bildirimler"
             >
               <span className="ikon">🔔</span>
-              <span className="btn-metin">Bildirimler</span>
+              <span className="btn-metin">Fiyat Alarmları</span>
               {bildirimSayisi > 0 && <span className="sayac">{bildirimSayisi}</span>}
             </button>
           </div>
@@ -469,107 +485,97 @@ function ShellIc({ token, ad, soyad, onCikis }) {
 
         {/* 3. Ana Çalışma Alanı (Container) */}
         <main className="container" style={{ maxWidth: 1440 }}>
-          {bildirimAcik ? (
-            <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <button className="logout-btn geri" onClick={() => setBildirimAcik(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13 }}>
-                <span>←</span>
-                <span>Ana Panele Dön</span>
-              </button>
-              <span style={{ fontSize: 12, color: '#787B86' }}>Bildirim & Olay Merkezi</span>
-            </div>
-          ) : (
-            <>
-              {/* 1. Masaüstü Navigasyonu (Sadece > 1024px ekranlarda görünür) */}
-              <div className="nav-desktop-yalnizca">
-                <nav className="nav-ust" style={{ borderColor: '#2A2E39', marginBottom: 12 }}>
-                  {UST_SEKMELER.map(k => (
-                    <button
-                      key={k}
-                      className={k === kategori ? 'aktif' : ''}
-                      onClick={() => setKategori(k)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                    >
-                      <span>{KATEGORI_IKONLARI[k] || '📌'}</span>
-                      <span>{k}</span>
-                    </button>
-                  ))}
-                </nav>
+          <>
+            {/* 1. Masaüstü Navigasyonu (Sadece > 1024px ekranlarda görünür) */}
+            <div className="nav-desktop-yalnizca">
+              <nav className="nav-ust" style={{ borderColor: '#2A2E39', marginBottom: 12 }}>
+                {UST_SEKMELER.map(k => (
+                  <button
+                    key={k}
+                    className={k === kategori ? 'aktif' : ''}
+                    onClick={() => setKategori(k)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <span>{KATEGORI_IKONLARI[k] || '📌'}</span>
+                    <span>{k}</span>
+                  </button>
+                ))}
+              </nav>
 
-                {kategori !== 'Ana Sayfa' && (
-                  <div style={{ marginBottom: 16 }}>
-                    <nav className="nav-alt" style={{ gap: 8 }}>
-                      {KATEGORILER[kategori].map(m => (
-                        <button
-                          key={m}
-                          className={m === aktifModul ? 'aktif' : ''}
-                          onClick={() => setModul(s => ({ ...s, [kategori]: m }))}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </nav>
-                    {ACIKLAMA[aktifModul] && (
-                      <p className="nav-aciklama" style={{ fontSize: 12.5, color: '#787B86', marginTop: 8 }}>
-                        ℹ️ {ACIKLAMA[aktifModul]}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* 2. Mobil ve Tablet Hamburger Menü & Akıllı Başlık Çubuğu (<= 1024px) */}
-              <div className="mobil-tablet-nav-bar">
-                <button
-                  type="button"
-                  className="mobil-hamburger-bar-btn"
-                  onClick={() => setSidebarAcik(true)}
-                  aria-label="Tüm Menüyü ve Modülleri Aç"
-                  title="Menüyü Aç"
-                >
-                  <span className="mobil-bar-ikon">☰</span>
-                  <div className="mobil-bar-metinler">
-                    <span className="mobil-bar-kat">{KATEGORI_IKONLARI[kategori] || '📌'} {kategori}</span>
-                    <span className="mobil-bar-modul">{ekranAdi}</span>
-                  </div>
-                  <span className="mobil-bar-ok">▾</span>
-                </button>
-
-                <div className="mobil-bar-kat-chipler">
-                  {UST_SEKMELER.map(k => (
-                    <button
-                      key={k}
-                      type="button"
-                      className={`mobil-bar-chip ${k === kategori ? 'aktif' : ''}`}
-                      onClick={() => {
-                        setBildirimAcik(false);
-                        setKategori(k);
-                      }}
-                    >
-                      <span>{KATEGORI_IKONLARI[k] || '📌'}</span>
-                      <span className="mobil-chip-yazi">{k}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 3. Mobil ve Tablet Alt Modül Hızlı Kaydırma Çubuğu (Ana Sayfa hariç) */}
               {kategori !== 'Ana Sayfa' && (
-                <div className="mobil-alt-modul-cubuk">
-                  {KATEGORILER[kategori].map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`mobil-alt-modul-chip ${m === aktifModul ? 'aktif' : ''}`}
-                      onClick={() => setModul(s => ({ ...s, [kategori]: m }))}
-                    >
-                      <span>{MODUL_IKONLARI[m] || '📌'}</span>
-                      <span>{m}</span>
-                    </button>
-                  ))}
+                <div style={{ marginBottom: 16 }}>
+                  <nav className="nav-alt" style={{ gap: 8 }}>
+                    {KATEGORILER[kategori].map(m => (
+                      <button
+                        key={m}
+                        className={m === aktifModul ? 'aktif' : ''}
+                        onClick={() => setModul(s => ({ ...s, [kategori]: m }))}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </nav>
+                  {ACIKLAMA[aktifModul] && (
+                    <p className="nav-aciklama" style={{ fontSize: 12.5, color: '#787B86', marginTop: 8 }}>
+                      ℹ️ {ACIKLAMA[aktifModul]}
+                    </p>
+                  )}
                 </div>
               )}
-            </>
-          )}
+            </div>
+
+            {/* 2. Mobil ve Tablet Hamburger Menü & Akıllı Başlık Çubuğu (<= 1024px) */}
+            <div className="mobil-tablet-nav-bar">
+              <button
+                type="button"
+                className="mobil-hamburger-bar-btn"
+                onClick={() => setSidebarAcik(true)}
+                aria-label="Tüm Menüyü ve Modülleri Aç"
+                title="Menüyü Aç"
+              >
+                <span className="mobil-bar-ikon">☰</span>
+                <div className="mobil-bar-metinler">
+                  <span className="mobil-bar-kat">{KATEGORI_IKONLARI[kategori] || '📌'} {kategori}</span>
+                  <span className="mobil-bar-modul">{ekranAdi}</span>
+                </div>
+                <span className="mobil-bar-ok">▾</span>
+              </button>
+
+              <div className="mobil-bar-kat-chipler">
+                {UST_SEKMELER.map(k => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={`mobil-bar-chip ${k === kategori ? 'aktif' : ''}`}
+                    onClick={() => {
+                      setBildirimAcik(false);
+                      setKategori(k);
+                    }}
+                  >
+                    <span>{KATEGORI_IKONLARI[k] || '📌'}</span>
+                    <span className="mobil-chip-yazi">{k}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 3. Mobil ve Tablet Alt Modül Hızlı Kaydırma Çubuğu (Ana Sayfa hariç) */}
+            {kategori !== 'Ana Sayfa' && (
+              <div className="mobil-alt-modul-cubuk">
+                {KATEGORILER[kategori].map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`mobil-alt-modul-chip ${m === aktifModul ? 'aktif' : ''}`}
+                    onClick={() => setModul(s => ({ ...s, [kategori]: m }))}
+                  >
+                    <span>{MODUL_IKONLARI[m] || '📌'}</span>
+                    <span>{m}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
 
           {/* Dinamik Sayfa Bileşeni */}
           <div className="sayfa" style={{ marginTop: 12 }}>
@@ -579,10 +585,7 @@ function ShellIc({ token, ad, soyad, onCikis }) {
                 api={api}
                 ad={ad}
                 bildirimYenile={bildirimYenile}
-                onModulDegistir={(kat, modAd) => {
-                  setKategori(kat);
-                  setModul(s => ({ ...s, [kat]: modAd }));
-                }}
+                onModulDegistir={modulGit}
               />
             ) : (
               <Yakinda key={ekranAdi} modul={ekranAdi} />

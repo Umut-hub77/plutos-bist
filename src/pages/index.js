@@ -23,15 +23,17 @@ export const SAYFALAR = {
   // Analiz
   'Stratejik Analiz': StratejikAnaliz,
   'Hisse Araştırma': HisseArastirma,
+  'Sektör Karşılaştırma': HisseArastirma,
   'Piyasa Tarayıcı': PiyasaTarayici,
   'AI Gelecek': AIGelecek,
   'Backtest': Backtest,
-  'Sektör Karşılaştırma': SektorKarsilastirma,
   'Temettü': Temettu,
   // Portföy
   'Portföy İzleme': PortfoyIzleme,
+  'Portföyüm': PortfoyIzleme,
   'İzleme Listesi': IzlemeListesi,
   'Portföy Optimizasyonu': PortfoyOptimizasyonu,
+  'Emir Ver': EmirVer,
   'Emir Ver (Demo)': EmirVer,
   'Performans & Risk': PerformansRisk,
   // Araçlar
@@ -39,5 +41,6 @@ export const SAYFALAR = {
   'Finansal Özgürlük (FIRE)': FinansalOzgurluk,
   'WhatsApp Botu': WhatsAppBotu,
   'Fiyat Alarmları': FiyatAlarmlari,
-  'Bildirimler': Bildirimler,
+  'Bildirimler': FiyatAlarmlari,
 };
+

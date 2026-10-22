@@ -218,7 +218,7 @@ export default function PiyasaTarayici({ api, onModulDegistir }) {
                               className="btn-aksiyon-al"
                               onClick={() => {
                                 window.location.hash = `#emir?hisse=${s.hisse}&yon=AL`;
-                                onModulDegistir?.('Portföy', 'Emir Ver (Demo)');
+                                onModulDegistir?.('Portföy', 'Emir Ver');
                               }}
                             >
                               AL
@@ -227,7 +227,7 @@ export default function PiyasaTarayici({ api, onModulDegistir }) {
                               className="btn-aksiyon-sat"
                               onClick={() => {
                                 window.location.hash = `#emir?hisse=${s.hisse}&yon=SAT`;
-                                onModulDegistir?.('Portföy', 'Emir Ver (Demo)');
+                                onModulDegistir?.('Portföy', 'Emir Ver');
                               }}
                             >
                               SAT

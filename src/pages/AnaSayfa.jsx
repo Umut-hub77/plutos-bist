@@ -125,7 +125,7 @@ export default function AnaSayfa({ api, ad, onModulDegistir }) {
 
   const onHizliAl = useCallback((hisseKod) => {
     window.location.hash = `#emir?hisse=${hisseKod}&yon=AL`;
-    onModulDegistir?.('Portföy', 'Emir Ver (Demo)');
+    onModulDegistir?.('Portföy', 'Emir Ver');
   }, [onModulDegistir]);
 
   const yukle = useCallback(async () => {
@@ -220,10 +220,10 @@ export default function AnaSayfa({ api, ad, onModulDegistir }) {
           <div className="kurumsal-kart-alt">
             <span>Hisseler: {portfoy ? fmt(portfoy.pozisyon_degeri, 0) : '0'} ₺</span>
             <span
-              onClick={() => onModulDegistir?.('Portföy', 'Portföyüm')}
+              onClick={() => onModulDegistir?.('Portföy', 'Portföy İzleme')}
               style={{ color: '#38BDF8', cursor: 'pointer', fontWeight: 600 }}
             >
-              Portföye Git →
+              Portföy İzleme →
             </span>
           </div>
         </div>
@@ -242,7 +242,7 @@ export default function AnaSayfa({ api, ad, onModulDegistir }) {
               onClick={() => onHizliAl('THYAO')}
               style={{ color: '#089981', cursor: 'pointer', fontWeight: 600 }}
             >
-              Hisse Al / Sat →
+              Emir Ver →
             </span>
           </div>
         </div>
@@ -268,7 +268,7 @@ export default function AnaSayfa({ api, ad, onModulDegistir }) {
               onClick={() => onModulDegistir?.('Analiz', 'Hisse Araştırma')}
               style={{ fontSize: 12, padding: '6px 12px' }}
             >
-              🔬 Hisse Araştırma & Kıyaslama
+              🔎 Hisse Araştırma
             </button>
             <button
               type="button"
@@ -276,7 +276,7 @@ export default function AnaSayfa({ api, ad, onModulDegistir }) {
               onClick={() => onModulDegistir?.('Analiz', 'Stratejik Analiz')}
               style={{ fontSize: 12, padding: '6px 12px' }}
             >
-              📊 Detaylı Grafik & Analiz
+              🎯 Stratejik Analiz
             </button>
           </div>
         </div>
