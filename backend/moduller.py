@@ -175,6 +175,7 @@ class BacktestIstek(BaseModel):
 class OptimizeIstek(BaseModel):
     hisseler: list[str]
     rf: float = 30.0               # yıllık risksiz getiri, %
+    portfoy_degeri: float | None = None
 
 
 class WatchIstek(BaseModel):
@@ -515,7 +516,7 @@ def kur(app, d):
     # 6) PORTFÖY OPTİMİZASYONU  (Markowitz — rastgele portföy simülasyonu)
     # =======================================================================
     @r.post("/api/optimize")
-    def optimize(istek: OptimizeIstek):
+    def optimize(istek: OptimizeIstek, authorization: str | None = Header(default=None)):
         liste = liste_kontrol(istek.hisseler, 2, 10)
         kap, eksik = kapanislar(liste)
         liste = [h for h in liste if h in kap.columns]
@@ -525,6 +526,25 @@ def kur(app, d):
         mu, cov = getiriler.mean().values * 252, getiriler.cov().values * 252
         rf, n = istek.rf / 100.0, len(liste)
 
+        son_fiyatlar = {h: float(kap[h].iloc[-1]) for h in liste}
+
+        port_degeri = float(istek.portfoy_degeri or 0)
+        if port_degeri <= 0:
+            try:
+                _, k = kullanici(authorization)
+                port = k.get("portfolio") or {}
+                nakit = float(k.get("virtual_cash", 100000.0) or 0.0)
+                poz_deger = 0.0
+                for h_kod, pos in port.items():
+                    lot_say = float(pos.get("lot", 0) or 0)
+                    f_son = son_fiyatlar.get(h_kod) or float(pos.get("maliyet", 0) or 0)
+                    poz_deger += lot_say * f_son
+                port_degeri = poz_deger + nakit
+            except Exception:
+                port_degeri = 100000.0
+        if port_degeri <= 0:
+            port_degeri = 100000.0
+
         rng = np.random.default_rng(7)
         w = np.vstack([rng.dirichlet(np.ones(n), 6000), np.eye(n), np.full((1, n), 1 / n)])
         ret = w @ mu
@@ -532,12 +552,29 @@ def kur(app, d):
         sharpe = (ret - rf) / np.where(risk > 0, risk, np.nan)
 
         def paket(i):
-            return {"agirliklar": {h: _f(w[i][j] * 100, 1) for j, h in enumerate(liste)},
-                    "getiri": _f(ret[i] * 100, 1), "risk": _f(risk[i] * 100, 1), "sharpe": _f(sharpe[i], 2)}
+            lotlar = {}
+            tutarlar = {}
+            for j, h in enumerate(liste):
+                agirlik_oran = float(w[i][j])
+                fiyat = son_fiyatlar.get(h, 0.0)
+                hedef_tutar = port_degeri * agirlik_oran
+                hedef_lot = int(round(hedef_tutar / fiyat)) if fiyat > 0 else 0
+                lotlar[h] = hedef_lot
+                tutarlar[h] = _f(hedef_lot * fiyat, 0)
+            return {
+                "agirliklar": {h: _f(w[i][j] * 100, 1) for j, h in enumerate(liste)},
+                "lotlar": lotlar,
+                "tutarlar": tutarlar,
+                "getiri": _f(ret[i] * 100, 1),
+                "risk": _f(risk[i] * 100, 1),
+                "sharpe": _f(sharpe[i], 2),
+            }
 
         ornek = rng.choice(len(w), size=min(500, len(w)), replace=False)
         return {
             "hisseler": liste, "eksik": eksik, "gun": len(getiriler),
+            "portfoy_degeri": _f(port_degeri, 0),
+            "fiyatlar": {h: _f(son_fiyatlar[h], 2) for h in liste},
             "max_sharpe": paket(int(np.nanargmax(sharpe))), "min_risk": paket(int(np.argmin(risk))), "esit": paket(len(w) - 1),
             "nokta": [{"risk": _f(risk[i] * 100, 1), "getiri": _f(ret[i] * 100, 1), "sharpe": _f(sharpe[i], 2)} for i in ornek],
             "tekil": [{"hisse": h, "risk": _f(risk[6000 + j] * 100, 1), "getiri": _f(ret[6000 + j] * 100, 1)} for j, h in enumerate(liste)],

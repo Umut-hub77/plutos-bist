@@ -102,33 +102,83 @@ function etkinSinirFigur(sonuc) {
   return { data, layout };
 }
 
-function AgirlikKarti({ baslik, renk, p }) {
+function LotDagilimKarti({ baslik, renk, p, fiyatlar, portfoyDegeri, mevcutPortfoy }) {
   if (!p) return null;
+
+  const butce = Number(portfoyDegeri) > 0 ? Number(portfoyDegeri) : 100000;
+
+  const satirlar = Object.entries(p.agirliklar || {})
+    .filter(([, a]) => a > 0.05)
+    .map(([h, a]) => {
+      const fiyat = Number(fiyatlar?.[h]) || 0;
+      const ayrilanTutar = butce * (Number(a) / 100);
+      const lot =
+        fiyat > 0
+          ? Math.max(1, Math.round(ayrilanTutar / fiyat))
+          : p.lotlar?.[h] ?? 0;
+      const tutar = fiyat > 0 ? lot * fiyat : p.tutarlar?.[h] ?? ayrilanTutar;
+      const mevcutLot = mevcutPortfoy?.[h]?.lot ?? null;
+      return { h, lot, tutar, fiyat, mevcutLot };
+    })
+    .filter(x => x.lot > 0)
+    .sort((a, b) => b.lot - a.lot);
+
+  const maksLot = Math.max(1, ...satirlar.map(s => s.lot));
+
   return (
-    <div className="kurumsal-kart" style={{ flex: 1, minWidth: 280, borderTop: `3px solid ${renk}` }}>
+    <div className="kurumsal-kart" style={{ flex: 1, minWidth: 300, borderTop: `3px solid ${renk}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h4 style={{ color: renk, margin: 0 }}>{baslik}</h4>
         <span style={{ fontSize: 11, color: '#D1D4DC', fontFamily: 'JetBrains Mono' }}>
           Sharpe: <b>{fmt(p.sharpe, 2)}</b>
         </span>
       </div>
-      <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#787B86', borderBottom: '1px solid #1E222D', paddingBottom: 8 }}>
-        <span>Getiri: <b style={{ color: '#089981' }}>%{fmt(p.getiri, 1)}</b></span>
-        <span>Risk: <b style={{ color: '#F23645' }}>%{fmt(p.risk, 1)}</b></span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, color: '#787B86', borderBottom: '1px solid #1E222D', paddingBottom: 8 }}>
+        <div>
+          <span>Yıllık Beklenen Getiri: <b style={{ color: '#089981' }}>%{fmt(p.getiri, 1)}</b></span>
+          <span style={{ marginLeft: 12 }}>Risk: <b style={{ color: '#F23645' }}>%{fmt(p.risk, 1)}</b></span>
+        </div>
+        <span style={{ fontSize: 11, color: '#9CA3AF', fontFamily: 'JetBrains Mono' }}>
+          Bütçe: {fmt(butce, 0)} ₺
+        </span>
       </div>
       <table>
+        <thead>
+          <tr>
+            <th>Hisse</th>
+            <th>Olması Gereken Lot</th>
+            <th style={{ textAlign: 'right' }}>Tahmini Tutar</th>
+          </tr>
+        </thead>
         <tbody>
-          {Object.entries(p.agirliklar || {})
-            .filter(([, a]) => a > 0.05)
-            .sort((a, b) => b[1] - a[1])
-            .map(([h, a]) => (
-              <tr key={h}>
-                <td style={{ fontWeight: 700, color: '#FFFFFF', width: 80 }}>{h}</td>
-                <td>
-                  <BarHucre metin={fmt(a, 1) + '%'} deger={a} maks={100} renk={renk} />
-                </td>
-              </tr>
-            ))}
+          {satirlar.map(({ h, lot, tutar, fiyat, mevcutLot }) => (
+            <tr key={h}>
+              <td style={{ width: 85 }}>
+                <div style={{ fontWeight: 700, color: '#FFFFFF', fontFamily: 'JetBrains Mono' }}>{h}</div>
+                {fiyat > 0 && (
+                  <div style={{ fontSize: 10.5, color: '#787B86', fontFamily: 'JetBrains Mono' }}>
+                    {fmt(fiyat, 2)} ₺
+                  </div>
+                )}
+              </td>
+              <td>
+                <BarHucre
+                  metin={`${fmt(lot, 0)} Lot`}
+                  deger={lot}
+                  maks={maksLot}
+                  renk={renk}
+                />
+                {mevcutLot != null && (
+                  <div style={{ fontSize: 10, color: '#787B86', marginTop: 2 }}>
+                    Portföydeki mevcut: <b>{fmt(mevcutLot, 0)} Lot</b>
+                  </div>
+                )}
+              </td>
+              <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono', fontSize: 12, color: '#D1D4DC', whiteSpace: 'nowrap' }}>
+                {fmt(tutar, 0)} ₺
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -139,29 +189,47 @@ export default function PortfoyOptimizasyonu({ api }) {
   const t = useTickers(api);
   const [secili, setSecili] = useState([]);
   const [rf, setRf] = useState(30);
+  const [portfoyDegeri, setPortfoyDegeri] = useState(100000);
+  const [mevcutPortfoy, setMevcutPortfoy] = useState({});
+  const [ilkYuklendi, setIlkYuklendi] = useState(false);
   const [sonuc, setSonuc] = useState(null);
   const [bekle, setBekle] = useState(false);
   const [hata, setHata] = useState('');
 
   useEffect(() => {
-    api('/api/portfolio/raw')
+    api('/api/portfolio')
       .then(r => {
-        const h = Object.keys(r.portfolio || {});
+        const port = r.portfolio || {};
+        setMevcutPortfoy(port);
+        if (r.toplam_varlik && r.toplam_varlik > 0) {
+          setPortfoyDegeri(Math.round(r.toplam_varlik));
+        } else if (r.virtual_cash && r.virtual_cash > 0) {
+          setPortfoyDegeri(Math.round(r.virtual_cash));
+        }
+        const h = Object.keys(port);
         if (h.length >= 2) setSecili(h.slice(0, 10));
         else setSecili(['THYAO', 'GARAN', 'ASELS', 'EREGL', 'TUPRS']);
       })
       .catch(() => {
         setSecili(['THYAO', 'GARAN', 'ASELS', 'EREGL', 'TUPRS']);
+      })
+      .finally(() => {
+        setIlkYuklendi(true);
       });
   }, [api]);
 
-  const calistir = async () => {
+  const calistir = async (ozelHisseler = secili, ozelPortfoyDegeri = portfoyDegeri) => {
+    if (!ozelHisseler || ozelHisseler.length < 2) return;
     setBekle(true);
     setHata('');
     try {
       const res = await api('/api/optimize', {
         method: 'POST',
-        govde: { hisseler: secili, rf: Number(rf) },
+        govde: {
+          hisseler: ozelHisseler,
+          rf: Number(rf),
+          portfoy_degeri: Number(ozelPortfoyDegeri) || 100000,
+        },
       });
       setSonuc(res);
     } catch (e) {
@@ -172,6 +240,13 @@ export default function PortfoyOptimizasyonu({ api }) {
     }
   };
 
+  useEffect(() => {
+    if (ilkYuklendi && secili.length >= 2 && !sonuc && !bekle) {
+      calistir(secili, portfoyDegeri);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ilkYuklendi]);
+
   const frontierFig = useMemo(() => {
     return etkinSinirFigur(sonuc);
   }, [sonuc]);
@@ -180,9 +255,16 @@ export default function PortfoyOptimizasyonu({ api }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* 1. KONTROL FORMU */}
       <div className="kurumsal-kart" style={{ padding: 18 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h4 style={{ color: '#FFFFFF', margin: 0 }}>⚖️ Markowitz Modern Portföy Optimizasyonu (Etkin Sınır)</h4>
-          <span style={{ fontSize: 11, color: '#787B86' }}>Mean-Variance Frontier Analizi</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <h4 style={{ color: '#FFFFFF', margin: 0 }}>⚖️ Markowitz Altın Oran & Lot Dağılım Motoru</h4>
+            <span style={{ fontSize: 12, color: '#787B86' }}>
+              Portföy değerinize göre her hisseden kaç lot bulundurmanız gerektiğini hesaplar
+            </span>
+          </div>
+          <span style={{ fontSize: 11, color: '#D7FF4E', background: 'rgba(215, 255, 78, 0.1)', padding: '4px 10px', borderRadius: 6, fontFamily: 'JetBrains Mono' }}>
+            Hesaplanan Portföy Değeri: <b>{fmt(portfoyDegeri, 0)} ₺</b>
+          </span>
         </div>
 
         <HisseSecici
@@ -193,8 +275,22 @@ export default function PortfoyOptimizasyonu({ api }) {
           max={10}
         />
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginTop: 12, flexWrap: 'wrap' }}>
-          <div style={{ maxWidth: 240 }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginTop: 12, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 220 }}>
+            <label style={{ fontSize: 11.5, color: '#787B86', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
+              Portföy Değeri / Bütçe (₺):
+            </label>
+            <input
+              type="number"
+              step="1000"
+              min="1000"
+              value={portfoyDegeri}
+              onChange={e => setPortfoyDegeri(e.target.value)}
+              style={{ width: '100%', fontFamily: 'JetBrains Mono', fontWeight: 700 }}
+            />
+          </div>
+
+          <div style={{ maxWidth: 220 }}>
             <label style={{ fontSize: 11.5, color: '#787B86', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
               Yıllık Risksiz Faiz Oranı (%):
             </label>
@@ -209,11 +305,11 @@ export default function PortfoyOptimizasyonu({ api }) {
 
           <button
             className="arac-btn aktif"
-            onClick={calistir}
+            onClick={() => calistir(secili, portfoyDegeri)}
             disabled={bekle || secili.length < 2}
             style={{ padding: '9px 24px', fontSize: 13, height: 40 }}
           >
-            {bekle ? 'Optimizasyon Hesaplanıyor…' : 'Optimizasyonu Çalıştır'}
+            {bekle ? 'Lot Dağılımı Hesaplanıyor…' : 'Altın Oran Lot Dağılımını Hesapla'}
           </button>
         </div>
 
@@ -221,14 +317,35 @@ export default function PortfoyOptimizasyonu({ api }) {
         {hata && <div className="error-msg" style={{ marginTop: 8 }}>{hata}</div>}
       </div>
 
-      {/* 2. OPTİMİZASYON SONUÇLARI */}
+      {/* 2. OPTİMİZASYON SONUÇLARI (LOT BAZLI) */}
       {sonuc && (
         <>
-          {/* Önerilen Dağılım Kartları */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-            <AgirlikKarti baslik="⭐ Maksimum Sharpe Portföyü" renk="#D7FF4E" p={sonuc.max_sharpe} />
-            <AgirlikKarti baslik="🛡️ Minimum Risk Portföyü" renk="#00BCD4" p={sonuc.min_risk} />
-            <AgirlikKarti baslik="⚖️ Eşit Ağırlıklı Portföy" renk="#FF9800" p={sonuc.esit} />
+          {/* Önerilen Lot Dağılım Kartları */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+            <LotDagilimKarti
+              baslik="⭐ Altın Oran Dağılımı (Maks. Sharpe)"
+              renk="#D7FF4E"
+              p={sonuc.max_sharpe}
+              fiyatlar={sonuc.fiyatlar}
+              portfoyDegeri={portfoyDegeri}
+              mevcutPortfoy={mevcutPortfoy}
+            />
+            <LotDagilimKarti
+              baslik="🛡️ Minimum Risk Lot Dağılımı"
+              renk="#00BCD4"
+              p={sonuc.min_risk}
+              fiyatlar={sonuc.fiyatlar}
+              portfoyDegeri={portfoyDegeri}
+              mevcutPortfoy={mevcutPortfoy}
+            />
+            <LotDagilimKarti
+              baslik="⚖️ Eşit Ağırlıklı Lot Dağılımı"
+              renk="#FF9800"
+              p={sonuc.esit}
+              fiyatlar={sonuc.fiyatlar}
+              portfoyDegeri={portfoyDegeri}
+              mevcutPortfoy={mevcutPortfoy}
+            />
           </div>
 
           {/* Markowitz Etkin Sınır Grafiği */}
@@ -244,3 +361,4 @@ export default function PortfoyOptimizasyonu({ api }) {
     </div>
   );
 }
+
