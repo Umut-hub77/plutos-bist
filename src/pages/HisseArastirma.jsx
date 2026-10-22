@@ -44,6 +44,7 @@ export default function HisseArastirma({ api, onModulDegistir }) {
 
   // Çoklu Karşılaştırma Seçimi
   const [seciliHisseler, setSeciliHisseler] = useState([]);
+  const [kiyaslamaUyari, setKiyaslamaUyari] = useState('');
   const [kiyaslamaModal, setKiyaslamaModal] = useState(false);
   const [kiyaslamaVerisi, setKiyaslamaVerisi] = useState(null);
   const [kiyaslamaYukleniyor, setKiyaslamaYukleniyor] = useState(false);
@@ -86,12 +87,13 @@ export default function HisseArastirma({ api, onModulDegistir }) {
 
   // Hisse Seçimini Toggle Et
   const hisseSecimiToggle = (kod) => {
+    setKiyaslamaUyari('');
     setSeciliHisseler(prev => {
       if (prev.includes(kod)) {
         return prev.filter(k => k !== kod);
       }
       if (prev.length >= 4) {
-        alert('En fazla 4 hisse aynı anda kıyaslanabilir.');
+        setKiyaslamaUyari('⚠️ En fazla 4 hisse aynı anda kıyaslanabilir.');
         return prev;
       }
       return [...prev, kod];
@@ -100,21 +102,43 @@ export default function HisseArastirma({ api, onModulDegistir }) {
 
   // Karşılaştırma Modalı Aç
   const karsilastirmayiAc = async (ozelKodlar) => {
-    const kodlar = ozelKodlar || seciliHisseler;
-    if (kodlar.length < 2) {
-      alert('Lütfen kıyaslamak için en az 2 hisse seçin.');
+    const kodlar = Array.isArray(ozelKodlar) ? ozelKodlar : seciliHisseler;
+    if (!kodlar || kodlar.length < 2) {
+      setKiyaslamaUyari('⚠️ Kıyaslama yapabilmek için lütfen tablodan en az 2 hisse seçiniz.');
       return;
     }
+    setKiyaslamaUyari('');
     setKiyaslamaModal(true);
     setKiyaslamaYukleniyor(true);
     try {
       const res = await api(`/api/research/compare?hisseler=${encodeURIComponent(kodlar.join(','))}`);
       setKiyaslamaVerisi(res);
     } catch (e) {
-      alert('Kıyaslama verisi alınamadı: ' + e.message);
+      setKiyaslamaUyari('Kıyaslama verisi alınamadı: ' + e.message);
+      setKiyaslamaModal(false);
     } finally {
       setKiyaslamaYukleniyor(false);
     }
+  };
+
+  // Tek hisse satırındaki "Kıyasla" butonuna basıldığında:
+  // Otomatik olarak GARAN vb. varsayılan hisseyle kıyaslamaz; en az 2 hisse seçilmesini zorunlu tutar.
+  const satirdanKiyasla = (kod) => {
+    const digerSecililer = seciliHisseler.filter(k => k !== kod);
+    if (digerSecililer.length === 0) {
+      if (!seciliHisseler.includes(kod)) {
+        setSeciliHisseler([kod]);
+      }
+      setKiyaslamaUyari(
+        `⚠️ Hisse seçmeden kıyaslama yapılamaz! "${kod}" kıyaslama listesine eklendi — kıyaslamayı başlatmak için lütfen tablodan en az 1 hisse daha seçiniz.`
+      );
+      return;
+    }
+    const birlesik = seciliHisseler.includes(kod)
+      ? seciliHisseler
+      : [...seciliHisseler, kod].slice(0, 4);
+    setSeciliHisseler(birlesik);
+    karsilastirmayiAc(birlesik);
   };
 
   // CSV İndirme
@@ -504,6 +528,40 @@ export default function HisseArastirma({ api, onModulDegistir }) {
         </div>
       )}
 
+      {/* KIYASLAMA UYARI MESAJI */}
+      {kiyaslamaUyari && (
+        <div
+          style={{
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid #F59E0B',
+            color: '#FBBF24',
+            padding: '10px 14px',
+            borderRadius: 8,
+            fontSize: 12.5,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <span>{kiyaslamaUyari}</span>
+          <button
+            type="button"
+            onClick={() => setKiyaslamaUyari('')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#FBBF24',
+              cursor: 'pointer',
+              fontSize: 14,
+              padding: '2px 6px',
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* GÖRÜNÜM: DAĞILIM GRAFİĞİ (SCATTER PLOT) */}
       {gorunum === 'grafik' && scatterFigur && (
         <div className="kurumsal-kart" style={{ padding: 18 }}>
@@ -762,19 +820,30 @@ export default function HisseArastirma({ api, onModulDegistir }) {
                               Detay
                             </button>
                             <button
-                              onClick={() => karsilastirmayiAc([h.kod, h.kod === 'EREGL' ? 'KRDMD' : h.kod === 'THYAO' ? 'PGSUS' : 'GARAN'])}
+                              onClick={() => satirdanKiyasla(h.kod)}
                               style={{
                                 padding: '3px 8px',
-                                background: '#1E232F',
-                                border: '1px solid #2A2E39',
+                                background: secili ? 'rgba(16, 185, 129, 0.18)' : '#1E232F',
+                                border: secili ? '1px solid #10B981' : '1px solid #2A2E39',
                                 borderRadius: 4,
                                 color: '#10B981',
                                 fontSize: 11,
+                                fontWeight: secili ? 700 : 500,
                                 cursor: 'pointer',
                               }}
-                              title="Hızlı Kıyaslama Yap"
+                              title={
+                                seciliHisseler.length === 0
+                                  ? 'Kıyaslama için önce hisse seçiniz'
+                                  : secili && seciliHisseler.length === 1
+                                  ? 'Kıyaslama için lütfen 2. bir hisse daha seçin'
+                                  : 'Seçili hisseler ile kıyasla'
+                              }
                             >
-                              Kıyasla
+                              {secili && seciliHisseler.length === 1
+                                ? '✓ Seçildi'
+                                : seciliHisseler.length >= 1 && !secili
+                                ? '⚖️ Kıyasla'
+                                : 'Kıyasla'}
                             </button>
                           </div>
                         </td>
@@ -803,6 +872,8 @@ export default function HisseArastirma({ api, onModulDegistir }) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
             boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(56, 189, 248, 0.25)',
             zIndex: 40,
           }}
@@ -816,13 +887,20 @@ export default function HisseArastirma({ api, onModulDegistir }) {
               <span style={{ color: '#38BDF8', fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 700 }}>
                 {seciliHisseler.join(', ')}
               </span>
-              <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 8 }}>(En fazla 4 hisse)</span>
+              <span style={{ fontSize: 11, color: seciliHisseler.length < 2 ? '#FBBF24' : '#9CA3AF', marginLeft: 8 }}>
+                {seciliHisseler.length < 2
+                  ? '(Kıyaslamak için lütfen en az 1 hisse daha seçin)'
+                  : '(En fazla 4 hisse)'}
+              </span>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
             <button
-              onClick={() => setSeciliHisseler([])}
+              onClick={() => {
+                setSeciliHisseler([]);
+                setKiyaslamaUyari('');
+              }}
               style={{
                 padding: '6px 12px',
                 background: 'transparent',
@@ -837,21 +915,25 @@ export default function HisseArastirma({ api, onModulDegistir }) {
             </button>
             <button
               onClick={() => karsilastirmayiAc()}
+              disabled={seciliHisseler.length < 2}
               style={{
                 padding: '7px 18px',
-                background: '#2563EB',
+                background: seciliHisseler.length < 2 ? '#334155' : '#2563EB',
                 border: 'none',
-                color: '#FFFFFF',
+                color: seciliHisseler.length < 2 ? '#94A3B8' : '#FFFFFF',
                 borderRadius: 6,
                 fontSize: 12.5,
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: seciliHisseler.length < 2 ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
+                opacity: seciliHisseler.length < 2 ? 0.7 : 1,
               }}
             >
-              🚀 Yan Yana Kıyasla & Analiz Et
+              {seciliHisseler.length < 2
+                ? '⚠️ En Az 2 Hisse Seçiniz'
+                : '🚀 Yan Yana Kıyasla & Analiz Et'}
             </button>
           </div>
         </div>

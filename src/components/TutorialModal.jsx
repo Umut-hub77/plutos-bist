@@ -43,19 +43,19 @@ const REHBER_ADIMLARI = [
     ),
   },
   {
-    baslik: '2. Sade ve Kolay Görünüm Modu 💡',
-    altBaslik: 'Karmaşık finansal göstergeler yerine net ve anlaşılır özetler.',
+    baslik: '2. Sade ve Anlaşılır Ana Sayfa Özeti 💡',
+    altBaslik: 'Karmaşık göstergeler yerine tek ekranda net ve anlaşılır piyasa özeti.',
     rozet: 'KULLANICI DOSTU',
     ikon: '🎯',
     icerik: (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <p style={{ margin: 0, lineHeight: 1.6, color: '#D1D4DC' }}>
-          Ana sayfanın sağ üstünde yer alan <b>"Sade Görünüm / Gelişmiş Görünüm"</b> anahtarı ile arayüzü kendinize göre özelleştirebilirsiniz:
+          Ana sayfa, tüm piyasa ve portföy durumunuzu tek bakışta görebileceğiniz sade ve anlaşılır bir yapıda tasarlanmıştır:
         </p>
         <div style={{ background: '#1E222D', padding: 12, borderRadius: 6, border: '1px solid #2A2E39', fontSize: 12.5, color: '#D1D4DC' }}>
-          <p style={{ margin: '0 0 6px 0', fontWeight: 600, color: '#D7FF4E' }}>🌱 Sade Görünümde Neler Var?</p>
+          <p style={{ margin: '0 0 6px 0', fontWeight: 600, color: '#D7FF4E' }}>✨ Ana Sayfada Neler Var?</p>
           <span style={{ color: '#787B86', lineHeight: 1.6 }}>
-            Toplam varlığınız ve nakdiniz anlaşılır kartlarda özetlenir. BIST 100 endeksi sade bir seans grafiğiyle gösterilir. Günün en popüler altın, döviz ve şirketleri doğrudan alım butonlarıyla listelenir.
+            BIST 100 / BIST 30 endeksleri, toplam portföy varlığınız ve nakit bakiyeniz üst kartlarda özetlenir. Hemen altında BIST 100 gün içi grafiği, günün yükselen/düşen hisseleri ve altın/döviz kurları yer alır.
           </span>
         </div>
       </div>

@@ -154,11 +154,27 @@ export default function SektorKarsilastirma({ api, onModulDegistir }) {
           />
         </div>
 
+        {secili.length < 2 && (
+          <div
+            style={{
+              marginTop: 10,
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid #F59E0B',
+              color: '#FBBF24',
+              padding: '9px 14px',
+              borderRadius: 8,
+              fontSize: 12.5,
+            }}
+          >
+            ⚠️ Kıyaslama grafiği ve tablosu için lütfen yukarıdan en az 2 hisse seçiniz.
+          </div>
+        )}
+
         {hata && <div className="error-msg" style={{ marginTop: 8 }}>{hata}</div>}
       </div>
 
       {/* 2. KARŞILAŞTIRMA GRAFİĞİ VE TABLOSU */}
-      {sonuc && (
+      {sonuc && secili.length >= 2 && (
         <>
           <div className="kurumsal-kart" style={{ padding: 18, opacity: yukleniyor ? 0.6 : 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
